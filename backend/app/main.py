@@ -8,13 +8,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import color_mappings, jobs, mappings, material_ledger, printers, realtime, reports, spools, stocks, trays
-from app.db.session import async_session_factory
+from app.db.session import async_session_factory, init_db
 from app.schemas.common import Health
 from app.services.event_processor import EventProcessor
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await init_db()
     processor = EventProcessor(poll_interval_sec=2.0)
     task = None
     try:

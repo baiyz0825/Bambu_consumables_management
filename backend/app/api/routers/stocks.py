@@ -1,22 +1,31 @@
+"""耗材库存 API 路由。
+
+提供耗材卷的 CRUD、同键合并入库、估值计算、账本冲正等操作。
+SQLite / PostgreSQL 双方言 upsert：PG 用 xmax 技巧判断 insert/update；
+SQLite 用 select+insert/update（单机低并发足够安全）。
+"""
+
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 import uuid
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import Text, cast, func, literal_column, over, select
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
+from app.core.config import settings
 from app.db.models.ams_color_mapping import AmsColorMapping
 from app.db.models.consumption_record import ConsumptionRecord
 from app.db.models.material_ledger import MaterialLedger
 from app.db.models.material_stock import MaterialStock
 from app.db.models.print_job import PrintJob
-from app.schemas.stock import (
+from app.schemas.stock import (  # noqa: F401 — used by response_model
     StockAdjustmentCreate,
     StockCreate,
     StockCreateResult,
@@ -37,6 +46,9 @@ from app.services.stock_service import apply_stock_delta
 from app.services.tray_service import get_total_trays
 from app.services.valuation_service import compute_stock_valuations
 
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/stocks", tags=["stocks"])
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
@@ -219,36 +231,76 @@ async def create_stock(body: StockCreate, db: AsyncSession = Depends(get_db)) ->
         raise HTTPException(status_code=409, detail={**e.detail, "message": e.message})
 
     tbl = MaterialStock.__table__
-    ins = insert(tbl).values(
-        id=uuid.uuid4(),
-        material=body.material,
-        color=body.color,
-        brand=body.brand,
-        roll_weight_grams=int(body.roll_weight_grams),
-        remaining_grams=delta_grams,
-        is_archived=False,
-        archived_at=None,
-        created_at=now,
-        updated_at=now,
-    )
-
-    stmt = ins.on_conflict_do_update(
-        index_elements=[tbl.c.material, tbl.c.color, tbl.c.brand],
-        # Must match the partial unique index predicate exactly (see alembic 0004: "is_archived = false")
-        index_where=(tbl.c.is_archived == False),  # noqa: E712
-        set_={
-            "remaining_grams": tbl.c.remaining_grams + ins.excluded.remaining_grams,
-            "updated_at": now,
-        },
-    ).returning(
-        *tbl.c,
-        # PostgreSQL upsert trick: xmax == 0 => inserted, xmax != 0 => updated (merged)
-        literal_column("xmax").label("_xmax"),
-    )
 
     try:
-        row = (await db.execute(stmt)).mappings().one()
-        merged = bool(int(row.get("_xmax") or 0) != 0)
+        if settings.database_url.startswith("sqlite"):
+            # SQLite 路径：不支持 PG 的 xmax upsert 返回值技巧，
+            # 改为 select + insert/update（单机低并发下足够安全）
+            logger.debug("stock upsert: using sqlite select+insert path key=(%s,%s,%s)", body.material, body.color, body.brand)
+            existing = (
+                await db.execute(
+                    select(MaterialStock).where(
+                        MaterialStock.material == body.material,
+                        MaterialStock.color == body.color,
+                        MaterialStock.brand == body.brand,
+                        MaterialStock.is_archived.is_(False),
+                    )
+                )
+            ).scalar_one_or_none()
+
+            if existing is None:
+                stock_obj = MaterialStock(
+                    id=uuid.uuid4(),
+                    material=body.material,
+                    color=body.color,
+                    brand=body.brand,
+                    roll_weight_grams=int(body.roll_weight_grams),
+                    remaining_grams=delta_grams,
+                    is_archived=False,
+                    archived_at=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(stock_obj)
+                merged = False
+            else:
+                existing.remaining_grams = (existing.remaining_grams or 0) + delta_grams
+                existing.updated_at = now
+                stock_obj = existing
+                merged = True
+            await db.flush()
+            row = {c.name: getattr(stock_obj, c.name) for c in tbl.c}
+        else:
+            ins = pg_insert(tbl).values(
+                id=uuid.uuid4(),
+                material=body.material,
+                color=body.color,
+                brand=body.brand,
+                roll_weight_grams=int(body.roll_weight_grams),
+                remaining_grams=delta_grams,
+                is_archived=False,
+                archived_at=None,
+                created_at=now,
+                updated_at=now,
+            )
+
+            stmt = ins.on_conflict_do_update(
+                index_elements=[tbl.c.material, tbl.c.color, tbl.c.brand],
+                # Must match the partial unique index predicate exactly (see alembic 0004: "is_archived = false")
+                index_where=(tbl.c.is_archived == False),  # noqa: E712
+                set_={
+                    "remaining_grams": tbl.c.remaining_grams + ins.excluded.remaining_grams,
+                    "updated_at": now,
+                },
+            ).returning(
+                *tbl.c,
+                # PostgreSQL upsert trick: xmax == 0 => inserted, xmax != 0 => updated (merged)
+                literal_column("xmax").label("_xmax"),
+            )
+
+            row = (await db.execute(stmt)).mappings().one()
+            merged = bool(int(row.get("_xmax") or 0) != 0)
+            logger.debug("stock upsert: postgres path, merged=%s", merged)
 
         # Ledger: record the delta added (skip if delta is 0 to reduce noise).
         if delta_grams != 0:

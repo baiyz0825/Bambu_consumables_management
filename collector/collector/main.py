@@ -1,8 +1,18 @@
+"""拓竹打印机 MQTT 数据采集器。
+
+职责：
+- 从数据库加载打印机列表，为每台打印机启动独立 MQTT watcher 线程
+- 订阅 ``device/{serial}/report`` 主题，解析打印状态/进度/AMS 托盘/切片用量
+- 原始报文与规范化事件写入数据库（幂等去重）
+- 按配置选择 SQLite / PostgreSQL 方言的 insert 语句
+
+单机部署时与 backend 共享同一 SQLite 数据库（WAL + busy_timeout 并发安全）。
+"""
+
 from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import logging
 import ssl
 import threading
@@ -11,14 +21,19 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
-import urllib.request
 
 import orjson
 import paho.mqtt.client as mqtt
 from sqlalchemy import select, update
-from sqlalchemy.dialects.postgresql import insert
 
 from collector.core.config import settings
+
+# 跨方言 insert：PG 与 SQLite 均支持 on_conflict_do_nothing
+if settings.database_url.startswith("sqlite"):
+    from sqlalchemy.dialects.sqlite import insert
+else:
+    from sqlalchemy.dialects.postgresql import insert
+
 from collector.core.crypto import decrypt_str
 from collector.gcode_estimator import GcodeEstimateManager
 from collector.db.models.normalized_event import NormalizedEvent
@@ -31,42 +46,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("collector")
 
 _GCODE_ESTIMATOR = GcodeEstimateManager()
-
-# region agent log
-import os
-
-_DBG_PATH = os.getenv("AGENT_DEBUG_LOG_PATH") or "/Volumes/extend/code/3d_consumables_management/.cursor/debug.log"
-_DBG_SESSION = "debug-session"
-_DBG_RUN = settings.__dict__.get("debug_run_id") if False else __import__("os").getenv("DEBUG_RUN_ID", "run1")
-
-
-def _agent_log(hypothesisId: str, location: str, message: str, data: dict) -> None:
-    try:
-        payload = {
-            "sessionId": _DBG_SESSION,
-            "runId": _DBG_RUN,
-            "hypothesisId": hypothesisId,
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": int(__import__("time").time() * 1000),
-        }
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        for endpoint in (
-            "http://host.docker.internal:7242/ingest/4ce5cedd-1b32-4497-a199-8b8693bfebf9",
-            "http://127.0.0.1:7242/ingest/4ce5cedd-1b32-4497-a199-8b8693bfebf9",
-        ):
-            try:
-                req = urllib.request.Request(endpoint, data=body, headers={"Content-Type": "application/json"}, method="POST")
-                urllib.request.urlopen(req, timeout=0.5)  # noqa: S310
-                return
-            except Exception:
-                pass
-        with open(_DBG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-# endregion
 
 
 def _utcnow() -> datetime:
@@ -160,14 +139,7 @@ class PrinterWatcher:
         # 断线重连：paho 内部有重连逻辑，但这里用 loop_forever 简化
         while True:
             try:
-                # region agent log
-                _agent_log(
-                    "D",
-                    "collector/collector/main.py:connect",
-                    "mqtt connect attempt",
-                    {"serial": (self.printer.serial or "")[:8], "ip": self.printer.ip, "port": 8883},
-                )
-                # endregion
+                logger.debug("mqtt connecting serial=%s ip=%s port=8883", self.printer.serial, self.printer.ip)
                 self._client.connect(self.printer.ip, 8883, keepalive=60)
                 self._client.loop_forever(retry_first_connection=True)
             except Exception:
@@ -716,24 +688,24 @@ async def ingest_loop(ingest_q: "asyncio.Queue[IngestItem]") -> None:
 async def main() -> None:
     ingest_q: asyncio.Queue[IngestItem] = asyncio.Queue(maxsize=2000)
 
+    # SQLite 模式下先确保建表（幂等；PG 模式为 no-op，表由 alembic 创建）。
+    # 失败不阻塞启动：backend 的 init_db 也会建表，任一成功即可。
+    try:
+        from collector.db.session import init_db
+
+        await init_db()
+    except Exception:
+        logger.warning("init_db failed; assuming backend will create tables")
+
     # DB/迁移可能尚未就绪：允许重试
     try:
         async with async_session_factory() as session:
             printers = (await session.execute(select(Printer))).scalars().all()
-        # region agent log
-        _agent_log(
-            "D",
-            "collector/collector/main.py:load_printers",
-            "printers loaded",
-            {"count": len(printers), "serials": [(p.serial or "")[:8] for p in printers[:5]]},
-        )
-        # endregion
+        logger.info("printers loaded on startup: %d", len(printers))
         if not printers:
-            logger.warning("no printers found in DB; collector will still run and retry periodically")
+            # 新库的正常状态：watcher 循环会周期性重查，无需告警
+            logger.info("no printers found in DB yet; collector will retry periodically")
     except Exception:
-        # region agent log
-        _agent_log("D", "collector/collector/main.py:load_printers", "printers load failed", {})
-        # endregion
         logger.warning("db not ready yet; will retry loading printers")
 
     loop = asyncio.get_running_loop()

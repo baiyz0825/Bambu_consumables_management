@@ -28,3 +28,13 @@ pnpm-debug.log*
 # IDE
 .idea/
 .cursor/
+
+# SQLite 单机模式本地产物
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# 本地运行脚本产物
+logs/
+.pids/

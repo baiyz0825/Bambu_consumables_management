@@ -3,17 +3,17 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, Index, Integer, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.types import UTCDateTime
 
 
 class MaterialStock(Base):
     __tablename__ = "material_stocks"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
 
     material: Mapped[str] = mapped_column(Text, nullable=False)
     color: Mapped[str] = mapped_column(Text, nullable=False)
@@ -24,10 +24,10 @@ class MaterialStock(Base):
 
     # Soft-delete / archive
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    archived_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True, default=None)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=datetime.utcnow)
 
 
 Index(
@@ -37,4 +37,5 @@ Index(
     MaterialStock.brand,
     unique=True,
     postgresql_where=MaterialStock.is_archived.is_(False),
+    sqlite_where=MaterialStock.is_archived.is_(False),
 )
