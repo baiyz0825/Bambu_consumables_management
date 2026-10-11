@@ -10,7 +10,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# --retries/--timeout：跨架构构建（QEMU 模拟）时下载较慢，避免 PyPI 偶发超时导致构建失败
+RUN pip install --no-cache-dir --retries 5 --timeout 60 -r /app/requirements.txt
 
 COPY . /app
 
