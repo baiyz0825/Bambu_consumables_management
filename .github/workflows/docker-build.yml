@@ -1,73 +1,127 @@
-name: Build and Push Docker Images
+name: Build and Push Multi-Arch Images
 
-# 触发条件：推送到main分支或创建Git标签
+# 触发条件：
+# - push 到 main：自动发布 latest + sha 标签
+# - push 标签 v*：发布语义化版本标签（v1.2.3 / 1.2.3 / 1.2）
+# - PR：只构建不推送，用于验证 Dockerfile 可构建
+# - 手动触发：可自定义目标平台与是否推送
 on:
   push:
     branches: [main]
     tags:
-      - 'v*'
+      - "v*"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "目标平台（逗号分隔）"
+        required: false
+        default: "linux/amd64,linux/arm64"
+      push:
+        description: "是否推送镜像（取消勾选则只构建）"
+        required: false
+        type: boolean
+        default: true
+
+# 同一 ref 上的多次提交只保留最新一次构建，避免并发抢占 GHCR 标签
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: 3d-consumables
+  IMAGE_PREFIX: 3d-consumables
+  # 默认构建平台：amd64（x86_64 服务器/台式机）+ arm64（树莓派 4/5、Apple Silicon、ARM 云主机）
+  # 如需覆盖（例如给老设备加 linux/arm/v7），用 workflow_dispatch 的 platforms 输入即可。
+  DEFAULT_PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
-  # 构建和推送作业
   build-and-push:
+    name: ${{ matrix.service }}
     runs-on: ubuntu-latest
+    # arm64 走 QEMU 模拟（尤其 frontend 的 Next.js 构建）耗时较长，放宽超时
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
     strategy:
+      # 三个服务互不影响：某个服务构建失败不中断其他服务
+      fail-fast: false
       matrix:
-        service: [api, collector, frontend]
         include:
           - service: api
-            dockerfile: backend/Dockerfile
-            context: backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
           - service: collector
-            dockerfile: collector/Dockerfile
-            context: collector
+            context: ./collector
+            dockerfile: ./collector/Dockerfile
           - service: frontend
-            dockerfile: frontend/Dockerfile
-            context: frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 设置Docker BuildKit
+      # QEMU：为 amd64 runner 提供 arm64 等异构架构的模拟执行环境
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # Buildx：多平台构建与构建缓存支持
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 登录到GitHub Container Registry
-      - name: Log in to Container Registry
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 提取元数据（标签）
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
           tags: |
-            type=ref,event=branch,suffix=
-            type=ref,event=tag,suffix=
+            type=ref,event=branch
+            type=ref,event=pr
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 
-      # 构建和推送Docker镜像（仅x86/amd64）
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+      - name: Resolve target platforms
+        id: platforms
+        run: echo "value=${{ inputs.platforms || env.DEFAULT_PLATFORMS }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push ${{ matrix.service }}
+        id: build
+        uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
-          push: true
+          platforms: ${{ steps.platforms.outputs.value }}
+          # PR 只构建；push/tag/手动（未取消勾选）才推送
+          push: ${{ github.event_name != 'pull_request' && github.event.inputs.push != 'false' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # 关闭 provenance attestation，避免老旧 Docker 客户端拉取多平台镜像时报错
+          provenance: false
+          # 每个服务独立缓存作用域，避免多平台/多服务互相覆盖缓存
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.service }}"
+            echo ""
+            echo "- platforms: \`${{ steps.platforms.outputs.value }}\`"
+            echo "- digest: \`${{ steps.build.outputs.digest || 'n/a' }}\`"
+            echo "- pushed: ${{ github.event_name != 'pull_request' && github.event.inputs.push != 'false' }}"
+          } >> "$GITHUB_STEP_SUMMARY"

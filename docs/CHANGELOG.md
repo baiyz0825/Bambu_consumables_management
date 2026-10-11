@@ -7,6 +7,16 @@
 
 ## [未发布]
 
+### 新增：GitHub Actions 多平台镜像自动发布
+
+- `docker-build.yml` 改为 QEMU + Buildx 多平台构建，默认 `linux/amd64,linux/arm64`，
+  产出 multi-arch manifest（`docker pull` 按架构自动匹配）
+- 触发：push `main` → `latest` + 短 sha；push `v*` → `v1.2.3` / `1.2.3` / `1.2`；
+  PR 只构建不推送；`workflow_dispatch` 可自定义平台与是否推送
+- GHA 构建缓存按服务分作用域；关闭 provenance attestation 以兼容旧版 Docker 客户端
+- 镜像仓库地址切换到新账号 `ghcr.io/baiyz0825`（compose 支持 `GHCR_OWNER` 覆盖），
+  同步更新 README 与部署文档中残留的旧账号/旧仓库引用
+
 ### 修复：局域网扫描扫不到打印机
 
 - mDNS 扫描同时监听 `_bambu-discovery` 与 `_bambu-lan` 两类服务，默认扫描窗口 5s → 8s

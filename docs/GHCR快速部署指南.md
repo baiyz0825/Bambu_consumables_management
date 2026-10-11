@@ -4,10 +4,31 @@
 
 ## 镜像信息
 
-所有镜像来源于 `ghcr.io/yangtao121`：
-- API服务：`ghcr.io/yangtao121/3d-consumables-api`
-- 采集器服务：`ghcr.io/yangtao121/3d-consumables-collector`
-- 前端服务：`ghcr.io/yangtao121/3d-consumables-frontend`
+所有镜像来源于 `ghcr.io/baiyz0825`：
+- API服务：`ghcr.io/baiyz0825/3d-consumables-api`
+- 采集器服务：`ghcr.io/baiyz0825/3d-consumables-collector`
+- 前端服务：`ghcr.io/baiyz0825/3d-consumables-frontend`
+
+**多平台支持**：每个镜像都是 multi-arch manifest，包含 `linux/amd64`（x86_64 服务器/PC）与
+`linux/arm64`（树莓派 4/5、Apple Silicon、ARM 云主机）。`docker pull` 会自动匹配本机架构，
+无需手动指定。
+
+> 镜像地址支持用环境变量覆盖（compose 中默认 `baiyz0825`）：
+> `GHCR_OWNER=your-account IMAGE_TAG=v1.0.0 docker compose -f docker-compose.ghcr.yml up -d`
+
+## 自动构建与发布
+
+由 GitHub Actions（`.github/workflows/docker-build.yml`）自动构建，规则：
+
+| 触发事件 | 行为 | 产出标签 |
+|---|---|---|
+| push 到 `main` | 构建并推送 | `latest`、短 sha |
+| push 标签 `v*` | 构建并推送 | `v1.2.3`、`1.2.3`、`1.2` |
+| Pull Request | 只构建不推送（验证 Dockerfile） | — |
+| 手动 `workflow_dispatch` | 可自定义平台（`platforms`）与是否推送（`push`） | 同分支规则 |
+
+实现要点：QEMU + Docker Buildx 多平台构建，GHA 缓存按服务分作用域加速后续构建。
+首次为 arm64 构建（QEMU 模拟，尤其是前端 Next.js 编译）耗时较长，之后会命中缓存。
 
 ## 一键部署
 
@@ -17,10 +38,10 @@
 
 ```bash
 # 创建并启动服务（使用默认配置）
-curl -fsSL https://raw.githubusercontent.com/yangtao121/3d-consumables-management/main/docker-compose.ghcr.yml | docker compose -f - up -d
+curl -fsSL https://raw.githubusercontent.com/baiyz0825/Bambu_consumables_management/main/docker-compose.ghcr.yml | docker compose -f - up -d
 
 # 查看服务状态
-docker compose -f https://raw.githubusercontent.com/yangtao121/3d-consumables-management/main/docker-compose.ghcr.yml ps
+docker compose -f https://raw.githubusercontent.com/baiyz0825/Bambu_consumables_management/main/docker-compose.ghcr.yml ps
 ```
 
 ### 方式二：自定义配置后部署
@@ -29,8 +50,8 @@ docker compose -f https://raw.githubusercontent.com/yangtao121/3d-consumables-ma
 
 ```bash
 # 1. 下载配置文件
-wget https://raw.githubusercontent.com/yangtao121/3d-consumables-management/main/docker-compose.ghcr.yml
-wget https://raw.githubusercontent.com/yangtao121/3d-consumables-management/main/env.ghcr.example -O .env
+wget https://raw.githubusercontent.com/baiyz0825/Bambu_consumables_management/main/docker-compose.ghcr.yml
+wget https://raw.githubusercontent.com/baiyz0825/Bambu_consumables_management/main/env.ghcr.example -O .env
 
 # 2. 编辑配置（可选）
 nano .env

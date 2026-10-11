@@ -99,7 +99,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/yangtao121/Bambu_consumables_management.git
+git clone https://github.com/baiyz0825/Bambu_consumables_management.git
 cd Bambu_consumables_management
 
 # 2. 创建 Python 虚拟环境并安装依赖
@@ -150,12 +150,14 @@ docker compose ps
 curl http://localhost:8000/health
 ```
 
-**镜像信息**：
-- API 服务：`ghcr.io/yangtao121/3d-consumables-api:latest`
-- 采集器：`ghcr.io/yangtao121/3d-consumables-collector:latest`
-- 前端：`ghcr.io/yangtao121/3d-consumables-frontend:latest`
+**镜像信息**（multi-arch manifest，含 `linux/amd64` + `linux/arm64`）：
+- API 服务：`ghcr.io/baiyz0825/3d-consumables-api:latest`
+- 采集器：`ghcr.io/baiyz0825/3d-consumables-collector:latest`
+- 前端：`ghcr.io/baiyz0825/3d-consumables-frontend:latest`
 
-> ⚠️ 注意：GHCR 预构建镜像仅发布 `linux/amd64` 架构，Apple Silicon (arm64) Mac 请用方式一本地源码启动。
+> 镜像由 GitHub Actions 自动构建并推送到 GHCR：push 到 `main` 发布 `latest` + 短 sha，
+> 推送 `v*` 标签发布语义化版本（如 `v1.2.3`）。`docker pull` 会按本机架构自动匹配，
+> Apple Silicon Mac、树莓派 4/5、ARM 云主机均可直接使用预构建镜像。详见 [GHCR快速部署指南](docs/GHCR快速部署指南.md)。
 
 ---
 
