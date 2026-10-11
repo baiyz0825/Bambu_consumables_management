@@ -12,6 +12,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { PrinterScanDialog } from "../../components/printer-scan-dialog";
 
 function formatGcodeState(st) {
   if (!st) return "-";
@@ -55,6 +56,7 @@ export default function Page() {
   const [colorDraftByHex, setColorDraftByHex] = useState({});
   const [savingColorHex, setSavingColorHex] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
 
   const printerIdsKey = items
     .map((p) => p && p.id)
@@ -279,6 +281,24 @@ export default function Page() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setScanOpen(true)}>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="mr-2"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            </svg>
+            扫描局域网
+          </Button>
           <Button variant="outline" onClick={reload} disabled={loading}>
             {loading ? "加载中…" : "刷新"}
           </Button>
@@ -513,6 +533,28 @@ export default function Page() {
           </Card>
         ) : null}
       </div>
+
+      {/* 局域网 mDNS 扫描添加打印机 */}
+      <PrinterScanDialog
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        existingSerials={items.map((p) => p.serial)}
+        onSelect={(device) => {
+          // 预填表单：扫描拿到的 ip/serial/model/alias 自动填入，用户只需补 LAN Code
+          form.setValue("ip", device.ip, { shouldDirty: true, shouldValidate: true });
+          form.setValue("serial", device.serial, { shouldDirty: true, shouldValidate: true });
+          if (device.model) form.setValue("model", device.model, { shouldDirty: true });
+          if (device.alias) form.setValue("alias", device.alias, { shouldDirty: true });
+          // 清空 LAN Code 字段，引导用户去打印机屏幕查看
+          form.setValue("lan_access_code", "", { shouldDirty: true });
+          toast.success(`已选中 ${device.ip}（${device.model || "未知型号"}），请在打印机屏幕查看 LAN 访问码并填入`);
+          // 滚动到表单顶部，方便用户继续填写
+          setTimeout(() => {
+            const el = document.querySelector('input[placeholder*="LAN"]');
+            if (el) el.focus();
+          }, 100);
+        }}
+      />
     </div>
   );
 }
