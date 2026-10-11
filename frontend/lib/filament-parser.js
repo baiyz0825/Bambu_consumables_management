@@ -118,7 +118,7 @@ export const COLOR_NAME_TO_HEX = {
   // 拓竹特定色名
   midnight: "#1A1A2E",
   "teal green": "#008080",
-  beige grey: "#D4C5B9",
+  "beige grey": "#D4C5B9",
   "dark gray": "#4A4A4A",
   "light gray": "#D3D3D3",
   "dark blue": "#003366",
