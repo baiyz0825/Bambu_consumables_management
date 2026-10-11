@@ -36,7 +36,7 @@
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
 
-    --card: 222.2 84% 4.9%;
+    --card: 222.2 47% 9%;
     --card-foreground: 210 40% 98%;
 
     --muted: 217.2 32.6% 17.5%;
@@ -63,8 +63,38 @@
     @apply border-border;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
+    /* 移动端 iOS 安全区：顶部刘海、底部 Home indicator */
+    overscroll-behavior-y: none;
+  }
+
+  /* 防止 iOS Safari 点击高亮灰色闪动 */
+  a, button, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 表格横向滚动（移动端长表格不撑破布局） */
+  .table-wrap {
+    @apply overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0;
   }
 }
 
+@layer utilities {
+  /* 安全区工具类（PWA 全屏 + iOS notch） */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .min-h-safe {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+}
