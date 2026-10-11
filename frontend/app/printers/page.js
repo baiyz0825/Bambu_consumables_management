@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { PrinterScanDialog } from "../../components/printer-scan-dialog";
+import { TrayBindDialog } from "../../components/tray-bind-dialog";
 
 function formatGcodeState(st) {
   if (!st) return "-";
@@ -57,6 +58,11 @@ export default function Page() {
   const [savingColorHex, setSavingColorHex] = useState(null);
   const [loading, setLoading] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  // 托盘手动绑定：key 为 `${printer_id}:${tray_id}`，值为后端 /tray-mappings 返回的绑定记录
+  const [trayMappings, setTrayMappings] = useState({});
+  // 当前正在编辑绑定的托盘（{ printerId, trayId }），为 null 表示无
+  const [bindTarget, setBindTarget] = useState(null);
+  const [bindOpen, setBindOpen] = useState(false);
 
   const printerIdsKey = items
     .map((p) => p && p.id)
@@ -80,6 +86,28 @@ export default function Page() {
     } catch (e) {
       toast.error(String(e?.message || e));
     }
+  }
+
+  /** 加载当前生效的托盘绑定（只取 active），并按 `printer:tray` 建索引便于表格查表。 */
+  async function reloadTrayMappings() {
+    try {
+      const rows = await fetchJson("/tray-mappings?active_only=true");
+      const map = {};
+      for (const r of Array.isArray(rows) ? rows : []) {
+        if (r?.printer_id == null || r?.tray_id == null) continue;
+        map[`${r.printer_id}:${r.tray_id}`] = r;
+      }
+      setTrayMappings(map);
+    } catch (e) {
+      // 绑定属于增强信息：加载失败仅降级为「未绑定（自动匹配）」，不打断页面主流程
+      console.warn("load tray mappings failed", e);
+    }
+  }
+
+  /** 打开指定托盘的绑定 Dialog。 */
+  function openBindDialog(printerId, trayId) {
+    setBindTarget({ printerId, trayId });
+    setBindOpen(true);
   }
 
   function normalizeColorHex(v) {
@@ -148,6 +176,7 @@ export default function Page() {
     reload();
     reloadStocks();
     reloadColorMappings();
+    reloadTrayMappings();
 
     // Realtime updates via SSE
     const url = `${apiBaseUrl()}/realtime/printers`;
@@ -452,6 +481,7 @@ export default function Page() {
                         <th className="px-3 py-2">剩余(%)</th>
                         <th className="px-3 py-2">来源</th>
                         <th className="px-3 py-2">库存匹配</th>
+                        <th className="px-3 py-2">库存绑定</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -459,6 +489,8 @@ export default function Page() {
                         const trayId = t?.id;
                         if (trayId == null) return null;
                         const key = `${p.id}:${trayId}`;
+                        // 手动绑定优先于自动颜色匹配；未绑定时回落到自动匹配结果
+                        const binding = trayMappings[key] || null;
                         const isActiveTray = trayNow != null && trayNow !== 255 && Number(trayNow) === Number(trayId);
                         const isMissing = Boolean(t?.__missing);
                         const pct = normalizeRemainPct(t?.remain);
@@ -517,6 +549,35 @@ export default function Page() {
                             <td className="px-3 py-2">{isMissing ? "-" : pct == null ? (t?.remain == null ? "-" : t.remain) : `${Math.round(pct)}%`}</td>
                             <td className="px-3 py-2">{isMissing ? "空槽/未上报" : official ? "拓竹" : "第三方/未知"}</td>
                             <td className="px-3 py-2">{matchText}</td>
+                            <td className="px-3 py-2">
+                              {isMissing ? (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              ) : binding?.stock_id ? (
+                                <div className="space-y-1">
+                                  <div className="text-xs font-medium">
+                                    {binding.stock_material} · {binding.stock_color}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {binding.stock_brand} · 剩余 {binding.stock_remaining_grams}g
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => openBindDialog(p.id, trayId)}
+                                  >
+                                    更改绑定
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openBindDialog(p.id, trayId)}
+                                >
+                                  绑定库存
+                                </Button>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}
@@ -554,6 +615,22 @@ export default function Page() {
             if (el) el.focus();
           }, 100);
         }}
+      />
+
+      {/* 托盘 ↔ 库存绑定（手动指定优先于颜色自动匹配） */}
+      <TrayBindDialog
+        open={bindOpen}
+        onOpenChange={(v) => {
+          setBindOpen(v);
+          if (!v) setBindTarget(null);
+        }}
+        printerId={bindTarget?.printerId}
+        trayId={bindTarget?.trayId}
+        currentBinding={
+          bindTarget ? trayMappings[`${bindTarget.printerId}:${bindTarget.trayId}`] || null : null
+        }
+        stocks={stocks}
+        onBound={reloadTrayMappings}
       />
     </div>
   );

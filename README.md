@@ -12,6 +12,7 @@
 - **打印机接入管理**：支持添加/删除/编辑打印机，IP/序列号/访问码加密存储
 - **实时状态监控**：MQTT 直连打印机，实时显示在线状态、打印进度、当前任务、温度
 - **AMS 托盘信息**：展示当前活动托盘及所有托盘的颜色、材质、剩余量、RFID 标签
+- **托盘手动绑定库存**：每个 AMS 托盘可一键绑定耗材库中的库存项（支持搜索/更改/解绑），绑定后优先于颜色自动匹配作为归因依据
 - **多机管理**：支持多台打印机同时接入，独立线程监控互不干扰
 
 > 📸 打印机管理界面（含新增的「扫描局域网」按钮）：
@@ -278,7 +279,7 @@ export DATABASE_URL="postgresql+asyncpg://consumables:consumables@localhost:5432
 | `/stocks` | 耗材库存 | CRUD + 合并入库 + `color_hex` 自动绑定 |
 | `/stocks/{id}/bind-color` | 颜色绑定 | 绑定 AMS 颜色码 |
 | `/jobs` | 打印任务 | 任务历史 + 人工录入消耗 + 纠错 |
-| `/tray-mappings` | 托盘映射 | 打印机托盘 ↔ 耗材卷绑定/解绑 |
+| `/tray-mappings` | 托盘映射 | 打印机托盘 ↔ 库存项绑定/解绑（`stock_id`，兼容 legacy `spool_id`） |
 | `/trays` | 料盘管理 | 料盘总数 + 丢弃 |
 | `/color-mappings` | 颜色映射 | AMS 颜色码 ↔ 颜色名 CRUD |
 | `/reports` | 报表 | summary / monthly / daily |
@@ -293,7 +294,7 @@ export DATABASE_URL="postgresql+asyncpg://consumables:consumables@localhost:5432
 | 菜单 | 路径 | 功能 |
 |---|---|---|
 | 仪表盘 | `/` | 关键统计、快速入口 |
-| 打印机 | `/printers` | 打印机管理、扫描添加、AMS 托盘实时状态 |
+| 打印机 | `/printers` | 打印机管理、扫描添加、AMS 托盘实时状态、托盘绑定库存 |
 | 库存 | `/stocks` | 耗材库 CRUD、拍照 OCR、颜色绑定、账本 |
 | 任务历史 | `/jobs` | 打印任务、消耗记录、人工纠错 |
 | 报告 | `/reports` | 按时间/材质/打印机维度统计 |

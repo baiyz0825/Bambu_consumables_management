@@ -88,11 +88,18 @@ async def init_db() -> None:
 
     from app.db import models  # noqa: F401  触发模型注册到 Base.metadata
     from app.db.base import Base
+    from app.db.sqlite_migrate import ensure_tray_mapping_schema
 
     for attempt in range(1, INIT_DB_MAX_ATTEMPTS + 1):
         try:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+            # 老库结构补齐（create_all 不会改动已存在的表）。
+            # 使用独立 AUTOCOMMIT 连接：建表 DDL 在 pysqlite 下会隐式提交，
+            # 与 create_all 共事务会导致部分 DDL 落在事务外，行为不可控。
+            async with engine.connect() as mconn:
+                await mconn.execution_options(isolation_level="AUTOCOMMIT")
+                await mconn.run_sync(ensure_tray_mapping_schema)
             logger.info("database schema ensured (attempt=%d)", attempt)
             return
         except Exception:

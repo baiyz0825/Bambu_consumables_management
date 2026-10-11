@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+### 新增：AMS 托盘绑定耗材库
+
+- `tray_mappings` 新增 `stock_id`（外键到 `material_stocks`），`spool_id` 放宽为可空仅作 legacy 兼容
+- `POST /tray-mappings` 支持绑定库存项（同托盘重复绑定自动解绑旧记录），`GET` 返回库存摘要（材质/颜色/品牌/剩余）
+- `POST /tray-mappings/unbind` 解绑保持幂等
+- 打印机详情页 AMS 托盘表格新增「库存绑定」列与绑定 Dialog（库存列表可搜索，含解绑入口）
+- 数据库：新增迁移 `0009_tray_stock_id`；SQLite 单机模式由 `sqlite_migrate` 幂等补齐老库结构
+
 ## [0.0.3] - 2025-12-21
 
 ### 修复与增强
