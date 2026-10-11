@@ -325,6 +325,35 @@ async def create_stock(body: StockCreate, db: AsyncSession = Depends(get_db)) ->
         await db.rollback()
         raise HTTPException(status_code=400, detail=f"create stock failed: {e}")
 
+    # OCR 拍照识别带入的 color_hex：自动创建/更新 AmsColorMapping，
+    # 省去用户后续手动在「绑定颜色」里再绑一次。
+    if body.color_hex:
+        try:
+            from app.schemas.color_mapping import normalize_color_hex
+            normalized_hex = normalize_color_hex(body.color_hex)
+            existing = (
+                await db.execute(
+                    select(AmsColorMapping).where(AmsColorMapping.color_hex == normalized_hex)
+                )
+            ).scalars().first()
+            if not existing:
+                db.add(
+                    AmsColorMapping(
+                        color_hex=normalized_hex,
+                        color_name=body.color,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                await db.commit()
+                logger.info("auto-bound color_hex=%s -> color_name=%s (from OCR)", normalized_hex, body.color)
+        except IntegrityError:
+            # 并发场景下另一个请求已创建，忽略
+            await db.rollback()
+        except Exception as e:
+            # 颜色绑定失败不影响耗材创建主流程
+            logger.warning("auto-bind color_hex failed (ignored): %s", e)
+
     # remaining_grams_after reflects the row state after merge/insert
     after = int(row.get("remaining_grams") or 0)
     # Build a response with nested stock payload expected by frontend

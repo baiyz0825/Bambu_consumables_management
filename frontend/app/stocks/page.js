@@ -22,6 +22,7 @@ import {
 } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { OcrScanner } from "../../components/ocr-scanner";
 
 // 计算颜色亮度的工具函数
 function getLuminance(hexColor) {
@@ -41,6 +42,23 @@ function getLuminance(hexColor) {
 function getTextColor(hexColor) {
   return getLuminance(hexColor) > 0.5 ? '#000000' : '#FFFFFF';
 }
+
+// OCR 识别颜色 hex → 中文名（用于预填颜色字段）
+const HEX_TO_CN_NAME = {
+  "#000000": "黑色",
+  "#FFFFFF": "白色",
+  "#E60012": "红色",
+  "#FF6600": "橙色",
+  "#FFE500": "黄色",
+  "#00C853": "绿色",
+  "#0066FF": "蓝色",
+  "#00BFFF": "青色",
+  "#8E24AA": "紫色",
+  "#FF69B4": "粉色",
+  "#9E9E9E": "灰色",
+  "#795548": "棕色",
+  "#FFD700": "金色"
+};
 
 const createSchema = z.object({
   material: z.string().trim().min(1, "请输入材质"),
@@ -88,6 +106,7 @@ export default function Page() {
   const [trayTotal, setTrayTotal] = useState(null);
   const [valuations, setValuations] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [ocrOpen, setOcrOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteRefInfo, setDeleteRefInfo] = useState(null);
@@ -729,6 +748,35 @@ export default function Page() {
             <DialogDescription>按「材质 + 颜色 + 品牌」录入总库存：卷数 × 单卷克数。可选录入卷单价与是否带料盘。</DialogDescription>
           </DialogHeader>
 
+          {/* 拍照 OCR 识别：识别后自动预填下方表单，识别不准的字段可手动修改 */}
+          <div className="flex items-center gap-2 rounded-md border border-dashed bg-muted/30 p-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-muted-foreground"
+            >
+              <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z" />
+              <circle cx="12" cy="13" r="3" />
+            </svg>
+            <span className="text-xs text-muted-foreground">拍照自动识别材质/颜色/重量</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+              onClick={() => setOcrOpen(true)}
+            >
+              拍照识别
+            </Button>
+          </div>
+
           <form
             className="grid gap-4"
             onSubmit={form.handleSubmit(async (v) => {
@@ -995,6 +1043,31 @@ export default function Page() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* OCR 拍照识别 Dialog */}
+      <OcrScanner
+        open={ocrOpen}
+        onOpenChange={setOcrOpen}
+        onResult={(res) => {
+          // 预填表单：仅覆盖识别到的字段，未识别到的保留原值
+          if (res.material) {
+            form.setValue("material", res.material, { shouldDirty: true, shouldValidate: true });
+          }
+          if (res.brand) {
+            form.setValue("brand", res.brand, { shouldDirty: true, shouldValidate: true });
+          }
+          if (res.weight_grams) {
+            form.setValue("roll_weight_grams", res.weight_grams, { shouldDirty: true, shouldValidate: true });
+          }
+          // 颜色名：优先用中文名映射，否则用 OCR 原始颜色名
+          if (res.color_name) {
+            const cnName = HEX_TO_CN_NAME[res.color_hex?.toUpperCase()] || res.color_name;
+            form.setValue("color", cnName, { shouldDirty: true, shouldValidate: true });
+          }
+          const filled = [res.material, res.brand, res.weight_grams, res.color_name].filter(Boolean).length;
+          toast.success(`已识别 ${filled} 个字段，请核对后提交`);
+        }}
+      />
     </div>
   );
 }

@@ -22,6 +22,9 @@ class StockCreate(BaseModel):
     price_total: float | None = Field(default=None, ge=0)
     has_tray: bool | None = None
 
+    # OCR 拍照识别时可直接带入颜色 hex，省去后续在 AMS 颜色映射表二次绑定
+    color_hex: str | None = Field(default=None, pattern=r"^#?[0-9A-Fa-f]{6}$")
+
     @model_validator(mode="after")
     def _validate_and_fill(self) -> "StockCreate":
         # If remaining_grams not provided, compute from rolls_count.
