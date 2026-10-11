@@ -15,6 +15,7 @@ from app.db.models.print_job import PrintJob
 from app.db.models.spool import Spool
 from app.schemas.job import JobConsumptionOut, JobMaterialResolve, JobOut, ManualConsumptionCreate, ManualConsumptionVoid
 from app.services.stock_service import apply_stock_delta
+from app.services.tray_service import bind_tray_to_stock
 
 logger = logging.getLogger(__name__)
 
@@ -178,8 +179,16 @@ async def resolve_job_materials(job_id: UUID, body: JobMaterialResolve, db: Asyn
         return {"ok": True, "resolved": 0, "note": "no pending consumptions"}
 
     tray_to_stock = snap.get("tray_to_stock") if isinstance(snap.get("tray_to_stock"), dict) else {}
+    # 库存来源标记：binding=托盘绑定，resolved=本次人工归因
+    source_map = dict(
+        snap.get("tray_to_stock_source")
+        if isinstance(snap.get("tray_to_stock_source"), dict)
+        else {}
+    )
+    also_bind = bool(getattr(body, "also_bind", True))
 
     resolved_count = 0
+    bound_count = 0
     remaining_pending: list[dict] = []
 
     # Build quick lookup mapping tray -> stock_id (from request)
@@ -217,6 +226,16 @@ async def resolve_job_materials(job_id: UUID, body: JobMaterialResolve, db: Asyn
             f"Resolving material for job {job_id}, tray {tray_id_int}: "
             f"stock_id={stock_id}, material={st.material}, color={st.color}, brand={st.brand}"
         )
+
+        # 同步写入托盘绑定：后续打印直接命中绑定，无需再次人工归因
+        if also_bind:
+            await bind_tray_to_stock(
+                db, printer_id=j.printer_id, tray_id=tray_id_int, stock_id=stock_id
+            )
+            bound_count += 1
+            source_map[str(tray_id_int)] = "binding"
+        else:
+            source_map[str(tray_id_int)] = "resolved"
 
         unit = entry.get("unit")
         grams_requested = 0
@@ -311,10 +330,16 @@ async def resolve_job_materials(job_id: UUID, body: JobMaterialResolve, db: Asyn
                 pass
     snap2["pending_trays"] = sorted(pending_set)
     snap2["tray_to_stock"] = tray_to_stock
+    snap2["tray_to_stock_source"] = source_map
     j.spool_binding_snapshot_json = snap2
     j.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
-    return {"ok": True, "resolved": resolved_count, "remaining_pending": len(remaining_pending)}
+    return {
+        "ok": True,
+        "resolved": resolved_count,
+        "bound": bound_count,
+        "remaining_pending": len(remaining_pending),
+    }
 
 

@@ -61,4 +61,7 @@ class JobMaterialResolveItem(BaseModel):
 
 class JobMaterialResolve(BaseModel):
     items: list[JobMaterialResolveItem] = Field(default_factory=list)
+    #: 归因成功后是否同步把该托盘绑定到所选库存项。
+    #: 默认开启——否则同一托盘每次打印都要重新人工归因一次。
+    also_bind: bool = True
 

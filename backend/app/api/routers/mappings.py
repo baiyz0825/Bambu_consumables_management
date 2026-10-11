@@ -21,6 +21,7 @@ from app.db.models.printer import Printer
 from app.db.models.spool import Spool
 from app.db.models.tray_mapping import TrayMapping
 from app.schemas.mapping import TrayMappingCreate, TrayMappingOut, TrayMappingUnbind
+from app.services.tray_service import bind_tray_to_stock
 
 logger = logging.getLogger(__name__)
 
@@ -82,28 +83,36 @@ async def bind_mapping(body: TrayMappingCreate, db: AsyncSession = Depends(get_d
             raise HTTPException(status_code=404, detail="spool not found")
 
     now = datetime.now(timezone.utc)
-    # 先解绑同一 printer/tray 的激活记录（确保 partial unique）
-    await db.execute(
-        update(TrayMapping)
-        .where(
-            TrayMapping.printer_id == body.printer_id,
-            TrayMapping.tray_id == body.tray_id,
-            TrayMapping.unbound_at.is_(None),
-        )
-        .values(unbound_at=now)
-    )
 
-    m = TrayMapping(
-        printer_id=body.printer_id,
-        tray_id=body.tray_id,
-        stock_id=body.stock_id,
-        spool_id=body.spool_id,
-        bound_at=now,
-        unbound_at=None,
-    )
-    db.add(m)
-    await db.commit()
-    await db.refresh(m)
+    if body.stock_id:
+        # 推荐路径：复用领域服务（内部处理旧激活记录的解绑）
+        m = await bind_tray_to_stock(
+            db, printer_id=body.printer_id, tray_id=body.tray_id, stock_id=body.stock_id, now=now
+        )
+        await db.commit()
+        await db.refresh(m)
+    else:
+        # legacy 路径：绑定到 Spool（仅向后兼容，新绑定请用 stock_id）
+        await db.execute(
+            update(TrayMapping)
+            .where(
+                TrayMapping.printer_id == body.printer_id,
+                TrayMapping.tray_id == body.tray_id,
+                TrayMapping.unbound_at.is_(None),
+            )
+            .values(unbound_at=now)
+        )
+        m = TrayMapping(
+            printer_id=body.printer_id,
+            tray_id=body.tray_id,
+            stock_id=None,
+            spool_id=body.spool_id,
+            bound_at=now,
+            unbound_at=None,
+        )
+        db.add(m)
+        await db.commit()
+        await db.refresh(m)
 
     logger.info(
         "tray bound: printer=%s tray=%d stock_id=%s spool_id=%s",

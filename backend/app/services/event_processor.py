@@ -14,6 +14,7 @@ from app.db.models.material_ledger import MaterialLedger
 from app.db.models.material_stock import MaterialStock
 from app.db.models.normalized_event import NormalizedEvent
 from app.db.models.print_job import PrintJob
+from app.db.models.tray_mapping import TrayMapping
 from app.services.stock_service import apply_stock_delta
 from app.core.config import settings
 
@@ -306,6 +307,63 @@ async def _resolve_stock_id(session: AsyncSession, *, material: str | None, colo
     
     logger.debug(f"No third-party stock match found for material={material}, color={color}")
     return None
+
+
+async def _resolve_stock_id_for_tray(
+    session: AsyncSession,
+    *,
+    printer_id: uuid.UUID,
+    tray_id: int,
+    material: str | None,
+    color: str | None,
+    is_official: bool,
+    at: datetime | None = None,
+) -> tuple[uuid.UUID | None, str]:
+    """解析某个托盘应该扣减的库存项：手动绑定优先，其次颜色自动匹配。
+
+    绑定生效条件（全部满足才采用）：
+    - 该 printer+tray 存在激活绑定（``unbound_at IS NULL``）；
+    - 绑定时间 ``bound_at`` 不晚于判定时刻 ``at``（用作业开始时间，避免打印中途
+      改绑定影响已开始的作业）；
+    - 绑定目标库存项存在且未归档（归档项不再参与扣减，需重新绑定）。
+
+    Args:
+        session: 数据库会话
+        printer_id: 打印机 ID
+        tray_id: AMS 托盘编号
+        material: 托盘材质（自动匹配回落用）
+        color: 托盘颜色名（自动匹配回落用）
+        is_official: 是否拓竹官方耗材（自动匹配回落用）
+        at: 绑定时效判定时刻，一般传 ``job.started_at``；为空则用当前时间
+
+    Returns:
+        ``(stock_id, source)``：source 为 ``binding`` / ``auto`` / ``none``
+    """
+    bound = await session.scalar(
+        select(TrayMapping).where(
+            TrayMapping.printer_id == printer_id,
+            TrayMapping.tray_id == int(tray_id),
+            TrayMapping.unbound_at.is_(None),
+            TrayMapping.bound_at <= (at or _utcnow()),
+        )
+    )
+
+    if bound is not None and bound.stock_id is not None:
+        stock = await session.get(MaterialStock, bound.stock_id)
+        if stock is not None and not stock.is_archived:
+            logger.info(
+                "tray binding hit: printer=%s tray=%d stock=%s (%s/%s)",
+                printer_id, tray_id, stock.id, stock.material, stock.color,
+            )
+            return stock.id, "binding"
+        # 绑定目标已归档/已删除：回落到自动匹配，避免扣到无效库存
+        logger.warning(
+            "tray binding target unusable (archived or missing): printer=%s tray=%d stock=%s; fallback to auto match",
+            printer_id, tray_id, bound.stock_id,
+        )
+
+    sid = await _resolve_stock_id(session, material=material, color=color, is_official=is_official)
+    return sid, ("auto" if sid else "none")
 
 
 def _normalize_remain_value(v: object) -> tuple[str, float] | None:
@@ -670,27 +728,33 @@ async def process_event(session: AsyncSession, ev: NormalizedEvent) -> None:
         job.started_at = job.started_at or ev.occurred_at
         tray_meta_by_tray = await _hydrate_tray_color_names(session, _tray_meta_by_tray(data))
         tray_to_stock: dict[str, str] = {}
+        # 记录每个托盘库存来源：binding=手动绑定，auto=颜色自动匹配，便于审计
+        tray_to_stock_source: dict[str, str] = {}
         pending_trays: list[int] = []
         for tray_id, meta in tray_meta_by_tray.items():
             # 空槽/未知槽：不参与归因与 pending（避免把 AMS 空位当成“待归因”）
             if not meta.get("material") or (not meta.get("color") and not meta.get("color_hex")):
                 continue
-            sid = None
-            if meta.get("color"):
-                sid = await _resolve_stock_id(
-                    session,
-                    material=meta.get("material"),
-                    color=meta.get("color"),
-                    is_official=bool(meta.get("is_official")),
-                )
+            # 手动绑定优先于颜色自动匹配；绑定命中时不再依赖颜色映射是否完善
+            sid, source = await _resolve_stock_id_for_tray(
+                session,
+                printer_id=printer_id,
+                tray_id=int(tray_id),
+                material=meta.get("material"),
+                color=meta.get("color"),
+                is_official=bool(meta.get("is_official")),
+                at=job.started_at,
+            )
             if sid:
                 tray_to_stock[str(tray_id)] = str(sid)
+                tray_to_stock_source[str(tray_id)] = source
             else:
                 pending_trays.append(int(tray_id))
         trays_seen: list[int] = [int(tray_now)] if isinstance(tray_now, int) else []
         job.spool_binding_snapshot_json = {
             "mode": "stock",
             "tray_to_stock": tray_to_stock,
+            "tray_to_stock_source": tray_to_stock_source,
             "tray_now": tray_now,
             "start_remain_by_tray": _remain_by_tray(data),
             "trays_seen": trays_seen,
@@ -794,26 +858,30 @@ async def process_event(session: AsyncSession, ev: NormalizedEvent) -> None:
         ):
             tray_meta_by_tray = await _hydrate_tray_color_names(session, _tray_meta_by_tray(data))
             tray_to_stock: dict[str, str] = {}
+            tray_to_stock_source: dict[str, str] = {}
             pending_trays: list[int] = []
             for tray_id, meta in tray_meta_by_tray.items():
                 if not meta.get("material") or (not meta.get("color") and not meta.get("color_hex")):
                     continue
-                sid = None
-                if meta.get("color"):
-                    sid = await _resolve_stock_id(
-                        session,
-                        material=meta.get("material"),
-                        color=meta.get("color"),
-                        is_official=bool(meta.get("is_official")),
-                    )
+                sid, source = await _resolve_stock_id_for_tray(
+                    session,
+                    printer_id=printer_id,
+                    tray_id=int(tray_id),
+                    material=meta.get("material"),
+                    color=meta.get("color"),
+                    is_official=bool(meta.get("is_official")),
+                    at=job.started_at,
+                )
                 if sid:
                     tray_to_stock[str(tray_id)] = str(sid)
+                    tray_to_stock_source[str(tray_id)] = source
                 else:
                     pending_trays.append(int(tray_id))
             trays_seen: list[int] = [int(tray_now)] if isinstance(tray_now, int) else []
             job.spool_binding_snapshot_json = {
                 "mode": "stock",
                 "tray_to_stock": tray_to_stock,
+                "tray_to_stock_source": tray_to_stock_source,
                 "tray_now": tray_now,
                 "start_remain_by_tray": _remain_by_tray(data),
                 "trays_seen": trays_seen,
@@ -866,30 +934,41 @@ async def process_event(session: AsyncSession, ev: NormalizedEvent) -> None:
                 except Exception:
                     pass
 
+            # 来源标记：binding 表示手动绑定（不再重复解析），auto 表示颜色自动匹配
+            # （每次事件重新解析，使"打印中新增绑定"能即时覆盖自动匹配结果）
+            source_map = (
+                dict(snap2.get("tray_to_stock_source"))
+                if isinstance(snap2.get("tray_to_stock_source"), dict)
+                else {}
+            )
+
             # Attempt resolving for trays we have meta for but not yet mapped.
             for tray_id in seen_set:
-                if str(tray_id) in tray_to_stock:
+                if str(tray_id) in tray_to_stock and source_map.get(str(tray_id)) == "binding":
                     continue
                 meta = merged_tm.get(str(tray_id))
                 if isinstance(meta, dict):
                     if not meta.get("material") or (not meta.get("color") and not meta.get("color_hex")):
                         # 空槽/未知槽不参与 pending
                         continue
-                    sid = None
-                    if meta.get("color"):
-                        sid = await _resolve_stock_id(
-                            session,
-                            material=meta.get("material"),
-                            color=meta.get("color"),
-                            is_official=bool(meta.get("is_official")),
-                        )
+                    sid, source = await _resolve_stock_id_for_tray(
+                        session,
+                        printer_id=printer_id,
+                        tray_id=int(tray_id),
+                        material=meta.get("material"),
+                        color=meta.get("color"),
+                        is_official=bool(meta.get("is_official")),
+                        at=job.started_at,
+                    )
                     if sid:
                         tray_to_stock[str(tray_id)] = str(sid)
+                        source_map[str(tray_id)] = source
                         if tray_id in pending_set:
                             pending_set.remove(tray_id)
                     else:
                         pending_set.add(int(tray_id))
             snap2["tray_to_stock"] = tray_to_stock
+            snap2["tray_to_stock_source"] = source_map
             snap2["pending_trays"] = sorted(pending_set)
             # Persist last-known tray (used as a settlement fallback)
             if tray_now is not None:
@@ -1126,12 +1205,16 @@ async def process_event(session: AsyncSession, ev: NormalizedEvent) -> None:
                 meta = tray_meta_by_tray.get(str(tray_id)) or tray_meta_by_tray.get(tray_id) or {}
                 if not isinstance(meta, dict):
                     meta = {}
-                if stock_uuid is None and meta.get("color"):
-                    stock_uuid = await _resolve_stock_id(
+                if stock_uuid is None:
+                    # 快照未命中（可能是后期新增绑定）：绑定优先，其次颜色自动匹配
+                    stock_uuid, _src = await _resolve_stock_id_for_tray(
                         session,
+                        printer_id=job.printer_id,
+                        tray_id=int(tray_id),
                         material=meta.get("material"),
                         color=meta.get("color"),
                         is_official=bool(meta.get("is_official")),
+                        at=job.started_at,
                     )
 
                 if stock_uuid is None:
@@ -1227,18 +1310,19 @@ async def process_event(session: AsyncSession, ev: NormalizedEvent) -> None:
                 meta = {}
 
             stock_uuid: uuid.UUID | None = None
-            if meta.get("color"):
-                logger.debug(f"Resolving stock for tray {tray_id} with material={meta.get('material')}, color={meta.get('color')}, is_official={meta.get('is_official')}")
-                stock_uuid = await _resolve_stock_id(
-                    session,
-                    material=meta.get("material"),
-                    color=meta.get("color"),
-                    is_official=bool(meta.get("is_official")),
-                )
-                if stock_uuid:
-                    logger.debug(f"Resolved stock_uuid={stock_uuid} for tray {tray_id}")
-                else:
-                    logger.warning(f"Failed to resolve stock for tray {tray_id} with material={meta.get('material')}, color={meta.get('color')}")
+            stock_uuid, _src = await _resolve_stock_id_for_tray(
+                session,
+                printer_id=job.printer_id,
+                tray_id=int(tray_id),
+                material=meta.get("material"),
+                color=meta.get("color"),
+                is_official=bool(meta.get("is_official")),
+                at=job.started_at,
+            )
+            if stock_uuid:
+                logger.debug(f"Resolved stock_uuid={stock_uuid} for tray {tray_id} (source={_src})")
+            else:
+                logger.warning(f"Failed to resolve stock for tray {tray_id} with material={meta.get('material')}, color={meta.get('color')}")
 
             if stock_uuid is None:
                 # Pending attribution for this tray (one record per tray; segment_idx fixed at 0)

@@ -54,6 +54,8 @@ export default function Page({ params }) {
   const [resolveMap, setResolveMap] = useState({});
   const [voidOpen, setVoidOpen] = useState(false);
   const [voidTarget, setVoidTarget] = useState(null);
+  // 归因后是否同步绑定托盘（默认开启：后续打印直接命中绑定，无需再次人工归因）
+  const [alsoBind, setAlsoBind] = useState(true);
 
   const form = useForm({
     resolver: zodResolver(manualSchema),
@@ -201,9 +203,9 @@ export default function Page({ params }) {
     }
     await fetchJson(`/jobs/${jobId}/materials/resolve`, {
       method: "POST",
-      body: JSON.stringify({ items })
+      body: JSON.stringify({ items, also_bind: alsoBind })
     });
-    toast.success("已归因并结算扣料");
+    toast.success(alsoBind ? "已归因并结算扣料，同时绑定了托盘" : "已归因并结算扣料");
     await reload();
   }
 
@@ -337,8 +339,19 @@ export default function Page({ params }) {
                   );
                 })}
               </div>
-              <div className="mt-3">
-                <Button onClick={resolvePending}>提交归因并结算</Button>
+              <div className="mt-3 space-y-2">
+                <label className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={alsoBind}
+                    onChange={(e) => setAlsoBind(e.target.checked)}
+                  />
+                  同时把托盘绑定到所选库存项（后续打印自动按绑定扣减，无需再次归因）
+                </label>
+                <Button onClick={resolvePending} className="w-full sm:w-auto">
+                  提交归因并结算
+                </Button>
               </div>
             </div>
           ) : null}

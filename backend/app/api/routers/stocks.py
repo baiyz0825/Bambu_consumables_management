@@ -43,7 +43,7 @@ from app.services.pricing_service import (
     derive_purchase_prices,
 )
 from app.services.stock_service import apply_stock_delta
-from app.services.tray_service import get_total_trays
+from app.services.tray_service import get_total_trays, unbind_trays_by_stock
 from app.services.valuation_service import compute_stock_valuations
 
 logger = logging.getLogger(__name__)
@@ -456,6 +456,8 @@ async def update_stock(
             s.is_archived = True
             s.archived_at = now
             s.updated_at = now
+            # 源库存归档：解绑指向它的托盘（后续结算改用自动匹配或重新绑定）
+            await unbind_trays_by_stock(db, stock_id=s.id, now=now)
 
             await db.commit()
             await db.refresh(target)
@@ -545,8 +547,16 @@ async def archive_stock(
     s.is_archived = True
     s.archived_at = now
     s.updated_at = now
+    # 归档后不再参与扣减：同步解绑指向它的托盘绑定，避免前端显示与实际结算不一致
+    unbound_count = await unbind_trays_by_stock(db, stock_id=stock_id, now=now)
     await db.commit()
-    return {"ok": True, "archived": True, "consumption_count": consumption_count, "job_count": job_count}
+    return {
+        "ok": True,
+        "archived": True,
+        "consumption_count": consumption_count,
+        "job_count": job_count,
+        "unbound_trays": unbound_count,
+    }
 
 
 @router.post("/{stock_id}/restore")

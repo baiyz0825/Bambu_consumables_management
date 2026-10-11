@@ -22,6 +22,17 @@
 - 深色模式：调试页黄色警告块与蓝色链接改用主题 token
 - PWA：新增 `public/sw.js`（App Shell 预缓存 + 导航回落 `/offline`）、注册组件、`/offline` 兜底页；manifest 补充 `id`/`scope`/`display_override`/`shortcuts`，移除强制竖屏；重新生成 192/180/256 图标；补齐 `runtime-config.js` 默认文件避免 404
 
+### 新增：结算优先按托盘绑定扣减（绑定真正生效）
+
+- 新增 `_resolve_stock_id_for_tray()`：解析托盘库存时**绑定优先**，无绑定回落颜色自动匹配；返回来源标记 `binding` / `auto` / `none`
+- 绑定时效按作业开始时刻判定（`bound_at <= job.started_at`），避免打印中途改绑定影响已开始作业
+- 绑定目标已归档/删除时自动回落自动匹配；绑定命中即不再依赖颜色映射是否完善
+- 快照新增 `tray_to_stock_source`，记录每个托盘库存来源，便于审计
+- 结算与快照构建点全部改走绑定优先（PrintStarted / 冷启动补快照 / 运行中补匹配 / filament 结算 / remain 差值结算）
+- 人工归因 `POST /jobs/{id}/materials/resolve` 新增 `also_bind`（默认 true）：归因同时写入托盘绑定，避免同一托盘反复归因
+- 库存归档 / 合并时级联解绑指向它的托盘绑定（新增 `unbind_trays_by_stock`）
+- 绑定写入逻辑下沉为 `tray_service.bind_tray_to_stock`，绑定路由与归因接口复用
+
 ### 新增：AMS 托盘绑定耗材库
 
 - `tray_mappings` 新增 `stock_id`（外键到 `material_stocks`），`spool_id` 放宽为可空仅作 legacy 兼容
