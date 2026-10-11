@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,13 @@ from app.db.models.printer import Printer
 from app.db.models.normalized_event import NormalizedEvent
 from app.schemas.printer import PrinterCreate, PrinterDetail, PrinterOut, PrinterUpdate
 from app.services.bambu_discovery import scan_bambu_printers
+from app.services.subnet_scanner import (
+    DEFAULT_CONNECT_TIMEOUT,
+    DEFAULT_PORTS,
+    host_ipv4,
+    scan_subnet,
+    suggested_subnet,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +64,80 @@ async def scan_printers(
         "count": len(devices),
         "devices": devices,
         "scan_timeout_seconds": timeout,
+        "scan_mode": "mdns",
+    }
+
+
+class SubnetScanRequest(BaseModel):
+    """网段扫描请求。
+
+    subnet 为空时自动使用后端所在网段（/24）。
+    """
+
+    subnet: str | None = Field(default=None, description="网段或 IP，如 192.168.9 / 192.168.9.0/24 / 192.168.9.37")
+    ports: list[int] | None = Field(default=None, description="探测端口列表，默认 8883（MQTT）")
+    timeout: float | None = Field(default=None, ge=0.1, le=3.0, description="单端口连接超时（秒）")
+    resolve_hostname: bool = Field(default=True, description="是否反查主机名")
+
+
+@router.get("/network-info", response_model=None)
+async def network_info() -> dict:
+    """返回后端所在主机的 IP 与建议扫描网段，供前端预填网段输入框。
+
+    注意：后端运行在 Docker/服务器 上时，返回的是**服务端**网段；
+    若浏览器与服务端不在同一网段，用户需手动输入。
+    """
+    return {
+        "host_ip": host_ipv4(),
+        "suggested_subnet": suggested_subnet(),
+    }
+
+
+@router.post("/scan-subnet", response_model=None)
+async def scan_subnet_printers(
+    body: SubnetScanRequest = SubnetScanRequest(),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """按网段并发探测拓竹打印机（mDNS 不可用时的兜底方案）。
+
+    通过 TCP 连接探测 8883（局域网 MQTT）端口判断设备是否在线，
+    适用于 AP 隔离 / 组播被禁 / 打印机未广播 mDNS 的网络环境。
+
+    端口探测只能确认「设备在线」，**序列号与 LAN Access Code 仍需用户手输**。
+    """
+    subnet = (body.subnet or "").strip() or suggested_subnet()
+    if not subnet:
+        raise HTTPException(
+            status_code=400,
+            detail="无法确定本机网段，请手动输入（如 192.168.9）",
+        )
+
+    try:
+        hosts = await scan_subnet(
+            subnet,
+            ports=body.ports or DEFAULT_PORTS,
+            timeout=body.timeout or DEFAULT_CONNECT_TIMEOUT,
+            resolve_hostname=body.resolve_hostname,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # 标记已添加的（按 IP 匹配）
+    existing_ips: set[str] = set()
+    if hosts:
+        rows = (
+            await db.execute(select(Printer.ip).where(Printer.ip.in_([h["ip"] for h in hosts])))
+        ).scalars().all()
+        existing_ips = set(rows)
+
+    for h in hosts:
+        h["already_added"] = h["ip"] in existing_ips
+
+    return {
+        "subnet": subnet,
+        "count": len(hosts),
+        "devices": hosts,
+        "scan_mode": "subnet",
     }
 
 

@@ -21,15 +21,20 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from zeroconf import DNSCache, ServiceInfo, ServiceListener, Zeroconf
+from zeroconf import ServiceInfo, ServiceListener, Zeroconf
 
 logger = logging.getLogger(__name__)
 
-# 拓竹打印机的 mDNS 服务类型
-BAMBU_SERVICE_TYPE = "_bambu-discovery._tcp.local."
+# 拓竹打印机的 mDNS 服务类型。
+# 不同固件/型号广播的服务类型不一致：官方 LAN 发现多为 _bambu-discovery，
+# 部分固件使用 _bambu-lan。两个都监听可以提高发现率。
+BAMBU_SERVICE_TYPES: tuple[str, ...] = ("_bambu-discovery._tcp.local.", "_bambu-lan._tcp.local.")
 
-# 扫描默认超时（秒）
-DEFAULT_SCAN_TIMEOUT = 5.0
+# 兼容旧引用（单类型）
+BAMBU_SERVICE_TYPE = BAMBU_SERVICE_TYPES[0]
+
+# 扫描默认超时（秒）。部分打印机广播周期较长，5 秒窗口容易漏掉
+DEFAULT_SCAN_TIMEOUT = 8.0
 
 
 @dataclass
@@ -68,19 +73,19 @@ class _BambuListener(ServiceListener):
 
     def add_service(self, zc: Zeroconf, service_type: str, name: str) -> None:
         # zeroconf 0.39+ 用 update_service 合并了 add/update；旧版 add 触发一次 get_info
-        self._resolve(zc, name)
+        self._resolve(zc, service_type, name)
 
     def update_service(self, zc: Zeroconf, service_type: str, name: str) -> None:
-        self._resolve(zc, name)
+        self._resolve(zc, service_type, name)
 
     def remove_service(self, zc: Zeroconf, service_type: str, name: str) -> None:
         # 服务下线，从列表移除（key 用 name 去 . 后缀）
         key = name.removesuffix("." + service_type)
         self.devices.pop(key, None)
 
-    def _resolve(self, zc: Zeroconf, name: str) -> None:
+    def _resolve(self, zc: Zeroconf, service_type: str, name: str) -> None:
         try:
-            info: ServiceInfo = zc.get_service_info(BAMBU_SERVICE_TYPE, name, timeout=2000)
+            info: ServiceInfo = zc.get_service_info(service_type, name, timeout=2000)
         except Exception as e:
             logger.debug("resolve %s failed: %s", name, e)
             return
@@ -110,7 +115,7 @@ class _BambuListener(ServiceListener):
         # hostname 去 .local. 后缀，方便展示
         hostname = (info.server or name).removesuffix(".local.").removesuffix(".")
 
-        key = name.removesuffix("." + BAMBU_SERVICE_TYPE)
+        key = name.removesuffix("." + service_type)
         device = DiscoveredPrinter(
             ip=ip,
             port=int(info.port) if info.port else 0,
@@ -132,7 +137,7 @@ def scan_bambu_printers(timeout: float = DEFAULT_SCAN_TIMEOUT) -> list[dict[str,
     同步阻塞调用，建议通过 ``asyncio.to_thread(scan_bambu_printers, timeout)`` 使用。
 
     Args:
-        timeout: 扫描持续时间（秒），默认 5 秒
+        timeout: 扫描持续时间（秒），默认 8 秒
 
     Returns:
         发现的打印机列表（dict），按 IP 排序
@@ -140,9 +145,10 @@ def scan_bambu_printers(timeout: float = DEFAULT_SCAN_TIMEOUT) -> list[dict[str,
     listener = _BambuListener()
     zc = None
     try:
-        # 指定 cache 避免某些环境下 DNSCache 缺失
         zc = Zeroconf()
-        zc.add_service_listener(BAMBU_SERVICE_TYPE, listener)
+        # 多服务类型同时监听：不同固件广播的服务类型不同
+        for service_type in BAMBU_SERVICE_TYPES:
+            zc.add_service_listener(service_type, listener)
         # 阻塞等待扫描窗口
         time.sleep(timeout)
     except Exception as e:
