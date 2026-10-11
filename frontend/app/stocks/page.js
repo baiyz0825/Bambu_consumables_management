@@ -353,14 +353,14 @@ export default function Page() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">库存</h1>
           <p className="text-sm text-muted-foreground">按「材质 + 颜色 + 品牌」维护总库存（卷数 × 单卷重量）。</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Input
-            className="h-9 w-56"
+            className="h-11 w-full sm:h-9 sm:w-56"
             placeholder="按颜色搜索（未归档）"
             value={colorQuery}
             onChange={(e) => setColorQuery(e.target.value)}
@@ -562,7 +562,7 @@ export default function Page() {
                       {s.color_hex ? (
                         <ColorBlock colorHex={s.color_hex} colorName={s.color} />
                       ) : (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span 
                             className="text-xs"
                             style={{
@@ -633,9 +633,9 @@ export default function Page() {
                 >
                   <div className="space-y-3">
                     {/* 库存项名称 */}
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <Link 
-                        className="font-medium hover:underline text-lg" 
+                        className="min-w-0 break-words font-medium text-lg hover:underline" 
                         href={`/stocks/${s.id}`}
                         style={{
                           color: s.color_hex ? getTextColor(s.color_hex) : undefined
@@ -749,7 +749,7 @@ export default function Page() {
           </DialogHeader>
 
           {/* 拍照 OCR 识别：识别后自动预填下方表单，识别不准的字段可手动修改 */}
-          <div className="flex items-center gap-2 rounded-md border border-dashed bg-muted/30 p-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed bg-muted/30 p-2">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="18"

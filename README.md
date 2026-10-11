@@ -70,8 +70,9 @@
 - **可安装到桌面**：支持 PWA 安装到手机主屏 / 桌面，独立窗口运行（standalone 模式）
 - **移动端自适应**：桌面顶部导航 + 移动端底部固定 Tab Bar，自动切换
 - **暗色/亮色/跟随系统**：三态主题切换，next-themes 持久化用户选择，无 FOUC 闪动
-- **安全区适配**：iOS 刘海/Home indicator、Android 状态栏自动避让
-- **离线友好**：Service Worker 缓存（可选启用）
+- **安全区适配**：iOS 刘海/Home indicator、Android 状态栏自动避让（`viewport-fit=cover` + `env(safe-area-inset-*)`）
+- **移动端布局适配**：页头按钮组换行、宽表横向滚动、按钮/输入框 40px+ 触控高度、Dialog 最大高度可滚动
+- **离线可用**：Service Worker 预缓存 App Shell，网络不可用时回落 `/offline` 页
 
 > 📸 移动端视图（375px，展示底部 Tab Bar + 暗色主题）：
 > ![移动端库存页](docs/images/mobile-stocks.png)
@@ -187,14 +188,15 @@ export DATABASE_URL="postgresql+asyncpg://consumables:consumables@localhost:5432
 
 ## 📡 打印机接入流程
 
-### 方式一：局域网自动扫描（推荐）
+### 方式一：局域网扫描（推荐）
 
-1. 确保打印机和运行本系统的机器在**同一局域网/广播域**
-2. 打开「打印机」页 → 点「扫描局域网」按钮
-3. 等待 5 秒，系统通过 mDNS 自动发现局域网内的拓竹打印机
-4. 在结果列表中点击未添加设备的「选择」
-5. IP/序列号/型号自动填入表单
-6. 在打印机屏幕「设置 → 网络 → 局域网访问码」查看访问码，填入后点「添加」
+「打印机」页 → 「扫描局域网」→ 弹窗内提供两种发现方式：
+
+1. **mDNS 扫描（默认）**：监听拓竹服务类型（8 秒窗口），可拿到 IP/序列号/型号/固件版本
+2. **网段扫描（兜底）**：mDNS 扫不到时（AP 隔离 / 跨 VLAN / 组播被禁 / 打印机未广播）改用此方式，
+   输入网段（如 `192.168.9`）后并发探测 8883 端口，1~2 秒即可列出在线设备（无序列号，需手输）
+
+选中设备后 IP/型号自动填入表单，再补 LAN 访问码即可添加。
 
 ### 方式二：手动添加
 
@@ -273,7 +275,7 @@ export DATABASE_URL="postgresql+asyncpg://consumables:consumables@localhost:5432
 
 | 路由前缀 | 模块 | 说明 |
 |---|---|---|
-| `/printers` | 打印机管理 | CRUD + `GET /printers/scan` mDNS 扫描 |
+| `/printers` | 打印机管理 | CRUD + `GET /printers/scan` mDNS 扫描 + `POST /printers/scan-subnet` 网段探测 + `GET /printers/network-info` |
 | `/printers/{id}/latest-report` | 实时报告 | 最新 MQTT 上报数据 |
 | `/realtime/printers` | SSE 流 | 实时推送打印机状态变化 |
 | `/stocks` | 耗材库存 | CRUD + 合并入库 + `color_hex` 自动绑定 |

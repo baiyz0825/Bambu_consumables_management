@@ -168,7 +168,7 @@ function MobileTabItem({ href, label, icon, active }) {
     <Link
       href={href}
       className={cn(
-        "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] transition-colors",
+        "flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[11px] transition-colors",
         active
           ? "text-foreground"
           : "text-muted-foreground hover:text-foreground"
@@ -176,7 +176,7 @@ function MobileTabItem({ href, label, icon, active }) {
       aria-current={active ? "page" : undefined}
     >
       {icon}
-      <span className="leading-none">{label}</span>
+      <span className="w-full truncate px-0.5 text-center leading-none">{label}</span>
     </Link>
   );
 }
@@ -185,9 +185,9 @@ export function AppShell({ children }) {
   const pathname = usePathname() || "/";
 
   return (
-    <div className="min-h-screen">
-      {/* 桌面顶部导航（md+ 显示） */}
-      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <div className="min-h-safe">
+      {/* 桌面顶部导航（md+ 显示）；pt-safe 为 iOS 刘海/PWA 状态栏留白 */}
+      <header className="sticky top-0 z-40 border-b bg-background/95 pt-safe backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto flex h-14 items-center justify-between gap-2 px-4 md:px-6">
           <div className="flex items-center gap-3">
             <div className="font-semibold tracking-tight">耗材管理</div>

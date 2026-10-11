@@ -66,12 +66,17 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    /* 禁止整页横向滚动：任何子元素意外溢出都被裁剪，避免"整页错位"的体感 */
+    overflow-x: hidden;
   }
 
   body {
     @apply bg-background text-foreground;
-    /* 移动端 iOS 安全区：顶部刘海、底部 Home indicator */
+    /* 移动端：禁止下拉橡皮筋 + 横向溢出，启用惯性滚动 */
     overscroll-behavior-y: none;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100vw;
   }
 
   /* 防止 iOS Safari 点击高亮灰色闪动 */

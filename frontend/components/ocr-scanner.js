@@ -276,7 +276,7 @@ export function OcrScanner({ open, onOpenChange, onResult }) {
                   置信度 {result.confidence}%
                 </Badge>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                 <ResultField label="材质" value={result.material} />
                 <ResultField
                   label="单卷重量"

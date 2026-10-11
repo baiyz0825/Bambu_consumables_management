@@ -113,12 +113,12 @@ export default function Page() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">仪表盘</h1>
           <p className="text-sm text-muted-foreground">概览：在线状态、正在打印、近期消耗趋势与快捷入口。</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button asChild variant="outline">
             <Link href="/printers">查看打印机</Link>
           </Button>
@@ -181,8 +181,8 @@ export default function Page() {
             <CardDescription>显示当前运行中的打印机与进度。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-auto rounded-md border">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full min-w-[480px] text-sm">
                 <thead className="bg-muted/50">
                   <tr className="text-left">
                     <th className="px-3 py-2">打印机</th>
@@ -196,7 +196,7 @@ export default function Page() {
                     <tr key={p.id} className="border-t">
                       <td className="px-3 py-2 font-medium">{p.alias || p.serial}</td>
                       <td className="px-3 py-2">{progress == null ? "-" : `${progress}%`}</td>
-                      <td className="px-3 py-2">{file || "-"}</td>
+                      <td className="max-w-[180px] truncate px-3 py-2">{file || "-"}</td>
                       <td className="px-3 py-2">
                         <Badge>运行中</Badge>
                       </td>
@@ -221,8 +221,8 @@ export default function Page() {
             <CardDescription>按天汇总（g）。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-auto rounded-md border">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full min-w-[360px] text-sm">
                 <thead className="bg-muted/50">
                   <tr className="text-left">
                     <th className="px-3 py-2">日期</th>

@@ -81,7 +81,7 @@ export default function Page() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="text-sm text-muted-foreground">
             <Link className="hover:underline" href="/settings">
@@ -108,7 +108,7 @@ export default function Page() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-[1fr_auto]">
             <div className="grid gap-2">
               <Label htmlFor="colorHex">颜色码</Label>
               <Input
@@ -144,7 +144,7 @@ export default function Page() {
                 <div>
                   <h4 className="font-medium">匹配的库存</h4>
                   <div className="mt-2 overflow-auto rounded-md border">
-                    <table className="w-full text-sm">
+                    <table className="w-full min-w-[480px] text-sm">
                       <thead className="bg-muted/50">
                         <tr className="text-left">
                           <th className="px-3 py-2">材料</th>
@@ -181,7 +181,7 @@ export default function Page() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-[1fr_auto]">
             <div className="grid gap-2">
               <Label htmlFor="material">材料</Label>
               <Input
@@ -239,8 +239,8 @@ export default function Page() {
                 </table>
               </div>
               {stocks.length > 1 && (
-                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                  <p className="text-sm text-yellow-800">
+                <div className="mt-4 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
                     警告: 找到多个匹配的库存记录，这可能导致材料匹配错误。建议检查这些记录，确保每个材料和颜色组合只有一个活跃记录。
                   </p>
                 </div>
@@ -282,7 +282,7 @@ export default function Page() {
                   <tr>
                     <td colSpan={3} className="px-3 py-8 text-center text-muted-foreground">
                       暂无颜色映射。前往{" "}
-                      <Link href="/settings/color-mappings" className="text-blue-600 hover:underline">
+                      <Link href="/settings/color-mappings" className="text-primary hover:underline">
                         颜色映射设置
                       </Link>{" "}
                       添加映射。

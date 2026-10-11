@@ -76,7 +76,7 @@ export default function Page() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">任务历史</h1>
           <p className="text-sm text-muted-foreground">任务历史：可筛选、查看详情、并手工补录扣料。</p>
@@ -136,8 +136,8 @@ export default function Page() {
           <CardDescription>共 {filtered.length} 条（点击进入详情查看扣料与快照）。</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-auto rounded-md border">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full min-w-[640px] text-sm">
               <thead className="bg-muted/50">
                 <tr className="text-left">
                   <th className="px-3 py-2">状态</th>
@@ -155,11 +155,13 @@ export default function Page() {
                     </td>
                     <td className="px-3 py-2">{fmtTime(j.started_at)}</td>
                     <td className="px-3 py-2">{j.ended_at ? fmtTime(j.ended_at) : "-"}</td>
-                    <td className="px-3 py-2">
-                      <Link className="font-medium hover:underline" href={`/jobs/${j.id}`}>
+                    <td className="max-w-[220px] px-3 py-2">
+                      <Link className="block truncate font-medium hover:underline" href={`/jobs/${j.id}`}>
                         {j.file_name || "-"}
                       </Link>
-                      {j.job_key ? <div className="text-xs text-muted-foreground">{j.job_key}</div> : null}
+                      {j.job_key ? (
+                        <div className="truncate text-xs text-muted-foreground">{j.job_key}</div>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2">{String(j.printer_id).slice(0, 8)}…</td>
                   </tr>

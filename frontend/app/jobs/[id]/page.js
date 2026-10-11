@@ -211,15 +211,15 @@ export default function Page({ params }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <div className="text-sm text-muted-foreground">
             <Link className="hover:underline" href="/jobs">
               任务历史
             </Link>{" "}
             / 详情
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">{job?.file_name || "任务详情"}</h1>
+          <h1 className="break-all text-2xl font-semibold tracking-tight">{job?.file_name || "任务详情"}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge variant={statusVariant(job?.status)}>{job?.status || "-"}</Badge>
             <div className="text-sm text-muted-foreground">
@@ -227,7 +227,7 @@ export default function Page({ params }) {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={reload} disabled={loading}>
             {loading ? "加载中…" : "刷新"}
           </Button>
@@ -300,9 +300,9 @@ export default function Page({ params }) {
                       </div>
                       <div className="md:col-span-6">
                         {needsMapping ? (
-                          <div className="mb-2 flex items-center gap-2">
+                          <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center">
                             <Input
-                              className="h-9"
+                              className="h-11 flex-1 sm:h-9"
                               placeholder="先把颜色码映射为：白色/灰色/…"
                               value={colorDraftByHex[colorHex] || ""}
                               onChange={(e) =>
@@ -343,8 +343,8 @@ export default function Page({ params }) {
             </div>
           ) : null}
 
-          <div className="overflow-auto rounded-md border">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full min-w-[640px] text-sm">
               <thead className="bg-muted/50">
                 <tr className="text-left">
                   <th className="px-3 py-2">时间</th>

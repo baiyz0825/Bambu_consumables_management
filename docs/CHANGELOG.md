@@ -7,6 +7,21 @@
 
 ## [未发布]
 
+### 修复：局域网扫描扫不到打印机
+
+- mDNS 扫描同时监听 `_bambu-discovery` 与 `_bambu-lan` 两类服务，默认扫描窗口 5s → 8s
+- 新增网段扫描兜底：`POST /printers/scan-subnet` 并发 TCP 探测 8883 端口（支持网段/CIDR/单 IP，/24 约 1 秒完成）
+- 新增 `GET /printers/network-info` 返回服务端网段，供前端预填
+- 扫描弹窗改为「mDNS 扫描 / 网段扫描」双模式，mDNS 为空时引导切换
+
+### 修复：移动端布局错位 + PWA 补齐
+
+- 全局：`html/body` 横向溢出保护、惯性滚动；`body` 与外壳改用 `dvh` 高度
+- 组件：Dialog 增加最大高度与内部滚动、Footer 竖排间距；Button/Input 移动端 40px+ 触控高度；下拉菜单限宽
+- 页面：页头按钮组换行（首页/打印机/库存/库存详情/任务/任务详情/设置）、宽表加最小宽度横向滚动、长文本截断、报告页重构为 Card + Tailwind（原为内联样式 + 硬编码浅色，深色模式不可读）
+- 深色模式：调试页黄色警告块与蓝色链接改用主题 token
+- PWA：新增 `public/sw.js`（App Shell 预缓存 + 导航回落 `/offline`）、注册组件、`/offline` 兜底页；manifest 补充 `id`/`scope`/`display_override`/`shortcuts`，移除强制竖屏；重新生成 192/180/256 图标；补齐 `runtime-config.js` 默认文件避免 404
+
 ### 新增：AMS 托盘绑定耗材库
 
 - `tray_mappings` 新增 `stock_id`（外键到 `material_stocks`），`spool_id` 放宽为可空仅作 legacy 兼容

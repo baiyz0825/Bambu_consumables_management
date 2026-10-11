@@ -276,7 +276,7 @@ export default function Page({ params }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="text-sm text-muted-foreground">
             <Link className="hover:underline" href="/stocks">
@@ -288,7 +288,7 @@ export default function Page({ params }) {
             {stock ? `${stock.material} · ${stock.color} · ${stock.brand}` : "库存详情"}
           </h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={reload} disabled={loading}>
             {loading ? "加载中…" : "刷新"}
           </Button>
@@ -401,8 +401,8 @@ export default function Page({ params }) {
           <CardDescription>自动扣料与手工盘点都会写入这里。</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-auto rounded-md border">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full min-w-[760px] text-sm">
               <thead className="bg-muted/50">
                 <tr className="text-left">
                   <th className="px-3 py-2">时间</th>
@@ -497,7 +497,7 @@ export default function Page({ params }) {
                 ))}
                 {ledger.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
+                    <td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">
                       暂无流水
                     </td>
                   </tr>

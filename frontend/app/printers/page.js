@@ -302,14 +302,14 @@ export default function Page() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">打印机</h1>
           <p className="text-sm text-muted-foreground">
             添加/查看打印机。耗材不再按“具体卷”绑定托盘，而是按「材质+颜色+品牌」的库存项扣减；第三方品牌读不到时会在作业里提示归因。
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={() => setScanOpen(true)}>
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -471,8 +471,8 @@ export default function Page() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="text-sm text-muted-foreground">AMS 托盘信息（材质/颜色/剩余）。系统会尝试匹配到唯一库存项；匹配不到会在作业里提示归因。</div>
-                <div className="overflow-auto rounded-md border">
-                  <table className="w-full text-sm">
+                <div className="overflow-x-auto rounded-md border">
+                  <table className="w-full min-w-[720px] text-sm">
                     <thead className="bg-muted/50">
                       <tr className="text-left">
                         <th className="px-3 py-2">托盘</th>
@@ -526,9 +526,9 @@ export default function Page() {
                             <td className="px-3 py-2">
                               <div>{colorDisplay}</div>
                               {colorHex && !mappedName && !isMissing ? (
-                                <div className="mt-2 flex items-center gap-2">
+                                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
                                   <Input
-                                    className="h-8"
+                                    className="h-9 min-w-[9rem] flex-1 sm:h-8"
                                     placeholder="映射为：白色/灰色/…"
                                     value={colorDraftByHex[colorHex] || ""}
                                     onChange={(e) =>
