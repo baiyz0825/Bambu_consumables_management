@@ -4,59 +4,92 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* iOS grouped background + system blue. Primary is deepened so white label text stays readable. */
+    --background: 240 20% 96%;
+    --foreground: 240 3% 11%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 240 3% 11%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 240 14% 93%;
+    --muted-foreground: 240 3% 40%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 211 100% 96%;
+    --accent-foreground: 211 100% 32%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 210 100% 40%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 240 12% 93%;
+    --secondary-foreground: 240 3% 18%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 354 84% 42%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 240 6% 88%;
+    --input: 240 6% 86%;
+    --ring: 211 100% 45%;
 
-    --radius: 0.6rem;
+    --radius: 1rem;
+
+    --tint-blue: 211 100% 96%;
+    --tint-blue-ink: 211 90% 34%;
+    --tint-green: 142 62% 93%;
+    --tint-green-ink: 142 64% 26%;
+    --tint-orange: 33 100% 94%;
+    --tint-orange-ink: 28 80% 32%;
+    --tint-purple: 280 72% 96%;
+    --tint-purple-ink: 280 52% 38%;
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 10px 28px rgba(60, 60, 67, 0.1);
+    --shadow-primary: 0 1px 2px rgba(0, 102, 204, 0.28), 0 8px 18px rgba(0, 102, 204, 0.24);
+    --shadow-bar: 0 8px 24px rgba(60, 60, 67, 0.08);
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(1000px 420px at 0% -12%, hsl(211 100% 52% / 0.22), transparent 56%),
+      radial-gradient(760px 340px at 100% -6%, hsl(280 80% 60% / 0.16), transparent 50%);
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 0 0% 0%;
+    --foreground: 0 0% 98%;
 
-    --card: 222.2 47% 9%;
-    --card-foreground: 210 40% 98%;
+    --card: 240 3% 11%;
+    --card-foreground: 0 0% 98%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 240 2% 18%;
+    --muted-foreground: 240 5% 72%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 211 42% 18%;
+    --accent-foreground: 211 100% 82%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 211 100% 52%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 240 2% 18%;
+    --secondary-foreground: 0 0% 96%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 356 90% 58%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --border: 240 3% 20%;
+    --input: 240 3% 24%;
+    --ring: 211 100% 62%;
+
+    --tint-blue: 214 55% 22%;
+    --tint-blue-ink: 211 100% 80%;
+    --tint-green: 145 42% 18%;
+    --tint-green-ink: 145 70% 74%;
+    --tint-orange: 30 55% 20%;
+    --tint-orange-ink: 32 100% 76%;
+    --tint-purple: 275 42% 24%;
+    --tint-purple-ink: 280 90% 84%;
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.45), 0 14px 36px rgba(0, 0, 0, 0.45);
+    --shadow-primary: 0 1px 2px rgba(10, 132, 255, 0.35), 0 8px 22px rgba(10, 132, 255, 0.32);
+    --shadow-bar: 0 -8px 24px rgba(0, 0, 0, 0.35);
   }
 
   * {
@@ -72,6 +105,9 @@
 
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(1100px 420px at 8% -12%, hsl(211 100% 50% / 0.1), transparent 58%),
+      radial-gradient(820px 360px at 100% -8%, hsl(280 70% 58% / 0.08), transparent 52%);
     /* 移动端：禁止下拉橡皮筋 + 横向溢出，启用惯性滚动 */
     overscroll-behavior-y: none;
     overflow-x: hidden;
@@ -82,6 +118,15 @@
   /* 防止 iOS Safari 点击高亮灰色闪动 */
   a, button, [role="button"] {
     -webkit-tap-highlight-color: transparent;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 
   /* 表格横向滚动（移动端长表格不撑破布局） */

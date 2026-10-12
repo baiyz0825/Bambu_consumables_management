@@ -313,82 +313,86 @@ export default function Page({ params }) {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
-        <Card>
+        <Card className="border-transparent bg-[hsl(var(--tint-blue))]">
           <CardHeader>
             <CardTitle>剩余</CardTitle>
             <CardDescription>总库存剩余（估算）。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">{stock ? stock.remaining_grams : "-"}</div>
+            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-blue-ink))]">
+              {stock ? stock.remaining_grams : "-"}
+            </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：g</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-transparent bg-[hsl(var(--tint-green))]">
           <CardHeader>
             <CardTitle>单卷克数</CardTitle>
             <CardDescription>用于 AMS remain% → 克数 的换算。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">{stock ? stock.roll_weight_grams : "-"}</div>
+            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-green-ink))]">
+              {stock ? stock.roll_weight_grams : "-"}
+            </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：g/卷</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-transparent bg-[hsl(var(--tint-orange))]">
           <CardHeader>
             <CardTitle>流水合计</CardTitle>
             <CardDescription>当前列表中 delta_grams 的合计（便于核对）。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">{totalDelta}</div>
+            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-orange-ink))]">{totalDelta}</div>
             <div className="mt-2 text-sm text-muted-foreground">单位：g</div>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-        <Card>
+        <Card className="border-transparent bg-[hsl(var(--tint-purple))]">
           <CardHeader>
             <CardTitle>累计购入总价值</CardTitle>
             <CardDescription>该库存项可计价入库累计（元）。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">
+            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-purple-ink))]">
               {valuation && typeof valuation.purchased_value_total === "number" ? fmtMoney(valuation.purchased_value_total) : "-"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：元</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-transparent bg-[hsl(var(--tint-orange))]">
           <CardHeader>
             <CardTitle>已消耗价值</CardTitle>
             <CardDescription>按移动加权平均估算（仅计已计价部分）。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">
+            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-orange-ink))]">
               {valuation && typeof valuation.consumed_value_est === "number" ? fmtMoney(valuation.consumed_value_est) : "-"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：元</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-transparent bg-[hsl(var(--tint-green))]">
           <CardHeader>
             <CardTitle>当前剩余价值</CardTitle>
             <CardDescription>已计价余额的剩余成本估算。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">
+            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-green-ink))]">
               {valuation && typeof valuation.remaining_value_est === "number" ? fmtMoney(valuation.remaining_value_est) : "-"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：元</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-transparent bg-[hsl(var(--tint-blue))]">
           <CardHeader>
             <CardTitle>已消耗卷数</CardTitle>
             <CardDescription>按消耗克数 / 单卷克数估算。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">
+            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-blue-ink))]">
               {valuation && typeof valuation.consumed_rolls_est === "number" ? round2(valuation.consumed_rolls_est) : "-"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：卷（估算）</div>

@@ -406,13 +406,13 @@ export default function Page() {
       </Card>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-        <Card>
+        <Card className="border-transparent bg-[hsl(var(--tint-blue))]">
           <CardHeader>
             <CardTitle className="text-base">总剩余</CardTitle>
             <CardDescription>未归档合计（估算）</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">{totalRemaining}</div>
+            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-blue-ink))]">{totalRemaining}</div>
             <div className="mt-2 text-sm text-muted-foreground">单位：g</div>
             {includeArchived ? (
               <div className="mt-2 text-xs text-muted-foreground">
@@ -424,24 +424,26 @@ export default function Page() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-transparent bg-[hsl(var(--tint-green))]">
           <CardHeader>
             <CardTitle className="text-base">总料盘</CardTitle>
             <CardDescription>入库与丢弃累计</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">{trayTotal === null ? "-" : trayTotal}</div>
+            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-green-ink))]">
+              {trayTotal === null ? "-" : trayTotal}
+            </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：个</div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-transparent bg-[hsl(var(--tint-orange))]">
           <CardHeader>
             <CardTitle className="text-base">已消耗卷数</CardTitle>
             <CardDescription>消耗克数 / 单卷克数</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">
+            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-orange-ink))]">
               {valuations && valuations.by_stock_id
                 ? round2(
                     Object.values(valuations.by_stock_id)
@@ -454,13 +456,13 @@ export default function Page() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-transparent bg-[hsl(var(--tint-purple))]">
           <CardHeader>
             <CardTitle className="text-base">颜色覆盖率</CardTitle>
             <CardDescription>已绑定颜色的占比</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">
+            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-purple-ink))]">
               {activeItems.length > 0
                 ? `${Math.round((activeItems.filter((s) => s.color_hex).length / activeItems.length) * 100)}%`
                 : "0%"}

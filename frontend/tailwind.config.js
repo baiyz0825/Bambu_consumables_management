@@ -11,6 +11,16 @@ module.exports = {
       }
     },
     extend: {
+      fontFamily: {
+        sans: [
+          "-apple-system",
+          "BlinkMacSystemFont",
+          '"SF Pro Text"',
+          '"PingFang SC"',
+          '"Helvetica Neue"',
+          "sans-serif"
+        ]
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

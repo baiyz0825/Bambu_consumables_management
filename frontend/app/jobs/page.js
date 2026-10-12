@@ -69,8 +69,8 @@ export default function Page() {
 
   function statusVariant(st) {
     const s = String(st || "").toLowerCase();
-    if (s === "running") return "default";
-    if (s === "ended" || s === "finished" || s === "finish") return "secondary";
+    if (s === "running") return "info";
+    if (s === "ended" || s === "finished" || s === "finish") return "success";
     if (s === "failed") return "destructive";
     if (s === "cancelled" || s === "canceled" || s === "cancel") return "outline";
     return "outline";

@@ -42,7 +42,7 @@ function linkLabel(link) {
 
 function statusVariant(status) {
   const s = String(status || "").toLowerCase();
-  if (s === "online") return "default";
+  if (s === "online") return "success";
   if (s === "unknown") return "outline";
   if (s === "offline") return "secondary";
   return "outline";
