@@ -57,7 +57,12 @@ export default function RootLayout({ children }) {
           <PwaRegister />
           <AppShell>{children}</AppShell>
           {/* 移动端顶部居中并下移，避免被 sticky header / 刘海遮挡 */}
-          <Toaster richColors position="top-center" offset={72} />
+          <Toaster
+            richColors
+            position="top-center"
+            offset="max(5.5rem, calc(env(safe-area-inset-top) + 4.25rem))"
+            mobileOffset="max(5.5rem, calc(env(safe-area-inset-top) + 4.25rem))"
+          />
         </ThemeProvider>
       </body>
     </html>

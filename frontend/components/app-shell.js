@@ -145,16 +145,20 @@ const NAV = [
   }
 ];
 
-function NavLink({ href, label }) {
-  const pathname = usePathname() || "/";
-  const active = pathname === href;
+function isNavActive(pathname, href) {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function NavLink({ href, label, active }) {
   return (
     <Link
       href={href}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "rounded-md px-3 py-2 text-sm transition-colors",
+        "shrink-0 rounded-md px-2.5 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active
-          ? "bg-accent text-foreground font-medium"
+          ? "bg-accent font-medium text-foreground"
           : "text-muted-foreground hover:bg-accent hover:text-foreground"
       )}
     >
@@ -168,15 +172,13 @@ function MobileTabItem({ href, label, icon, active }) {
     <Link
       href={href}
       className={cn(
-        "flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[11px] transition-colors",
-        active
-          ? "text-foreground"
-          : "text-muted-foreground hover:text-foreground"
+        "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:text-xs",
+        active ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground"
       )}
       aria-current={active ? "page" : undefined}
     >
       {icon}
-      <span className="w-full truncate px-0.5 text-center leading-none">{label}</span>
+      <span className="w-full truncate text-center leading-none">{label}</span>
     </Link>
   );
 }
@@ -188,32 +190,28 @@ export function AppShell({ children }) {
     <div className="min-h-safe">
       {/* 桌面顶部导航（md+ 显示）；pt-safe 为 iOS 刘海/PWA 状态栏留白 */}
       <header className="sticky top-0 z-40 border-b bg-background/95 pt-safe backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto flex h-14 items-center justify-between gap-2 px-4 md:px-6">
-          <div className="flex items-center gap-3">
-            <div className="font-semibold tracking-tight">耗材管理</div>
-            <nav className="hidden md:flex items-center gap-1">
+        <div className="container mx-auto flex min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2 md:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="shrink-0 font-semibold tracking-tight">耗材管理</div>
+            <nav className="hidden min-w-0 items-center gap-0.5 lg:flex" aria-label="主导航">
               {NAV.map((n) => (
-                <NavLink key={n.href} href={n.href} label={n.label} />
+                <NavLink key={n.href} href={n.href} label={n.label} active={isNavActive(pathname, n.href)} />
               ))}
             </nav>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="hidden text-xs text-muted-foreground sm:inline">
-              Docker / 局域网 MQTT
-            </span>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <span className="hidden text-xs text-muted-foreground xl:inline">Docker / 局域网 MQTT</span>
             <ThemeToggle />
           </div>
         </div>
       </header>
 
-      {/* 主内容区：底部留出移动端 Tab Bar 高度 + 安全区 */}
-      <main className="container mx-auto px-4 pb-24 pt-6 md:px-6 md:pb-6">
-        {children}
-      </main>
+      {/* 主内容区：lg 以下为底部 Tab Bar 留出高度与安全区 */}
+      <main className="container mx-auto min-w-0 px-4 pb-24 pt-6 md:px-6 lg:pb-8">{children}</main>
 
-      {/* 移动端底部 Tab Bar（md 以下显示，固定底部，带安全区 padding） */}
+      {/* 手机与 iPad 竖屏底部 Tab；iPad 横屏 / 桌面（lg+）改用顶部导航 */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         aria-label="主导航"
       >
@@ -224,7 +222,7 @@ export function AppShell({ children }) {
               href={n.href}
               label={n.label}
               icon={n.icon}
-              active={pathname === n.href}
+              active={isNavActive(pathname, n.href)}
             />
           ))}
         </div>

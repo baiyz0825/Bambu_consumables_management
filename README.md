@@ -1,26 +1,105 @@
 # 拓竹耗材管理系统 (Bambu Consumables Management)
 
-一个专为拓竹（Bambu Lab）打印机设计的局域网耗材管理系统。通过 **LAN MQTT** 直连打印机，实时监控打印状态与 AMS 托盘信息，自动结算耗材消耗并生成成本统计。支持 **SQLite 单机模式**（零依赖部署）和 **PostgreSQL** 双数据库后端，提供 **PWA 移动端可安装**、**暗色/亮色主题**、**拍照 OCR 识别耗材**、**局域网 mDNS 自动扫描打印机** 等现代化能力。
+一个专为拓竹（Bambu Lab）打印机设计的局域网耗材管理系统。通过 **LAN MQTT** 直连打印机，实时监控打印状态与 AMS 托盘信息，自动结算耗材消耗并生成成本统计。支持 **SQLite 单机模式**（零依赖部署）和 **PostgreSQL** 双数据库后端，提供 **PWA 可安装**、**手机 / iPad / 桌面自适应**、**暗色/亮色主题**、**拍照 OCR 识别耗材**、**局域网扫描添加打印机**。
+
+下面的截图是界面示例（演示数据），用来对照每一页的布局、入口和按钮。手机宽度使用底部标签，iPad 竖屏同样走底部标签，iPad 横屏和桌面走顶部导航。
+
+## 界面一览
+
+| 页面 | 路径 | 能做什么 |
+|---|---|---|
+| 仪表盘 | `/` | 在线数、正在打印、今日与近 7 天消耗，并跳到打印机 / 库存 / 任务 |
+| 打印机 | `/printers` | 扫描或手填添加打印机，查看 AMS 四槽，映射颜色，绑定库存 |
+| 库存 | `/stocks` | 按材质 + 颜色 + 品牌维护库存，搜索排序，拍照或手动新增，归档与恢复 |
+| 库存详情 | `/stocks/[id]` | 剩余与价值、流水，盘点调整、手工扣料、编辑入库 |
+| 任务历史 | `/jobs` | 按打印机、状态、关键字筛选任务 |
+| 任务详情 | `/jobs/[id]` | 扣料记录、待归因结算、手工补录与撤销 |
+| 报告 | `/reports` | 近 30 天按日、以及按月的克数和成本 |
+| 设置 | `/settings` | 进入颜色映射和材料调试 |
+| 颜色映射 | `/settings/color-mappings` | 把 AMS 颜色码写成「白色 / 灰色」等库存颜色名 |
+| 材料调试 | `/settings/material-debug` | 用颜色码或材质核对能匹配到哪些库存 |
+| 离线 | `/offline` | 网络不可用时的兜底页，已缓存页面仍可打开 |
+
+### 桌面
+
+仪表盘：在线、正在打印和消耗趋势。
+
+<img src="docs/images/dashboard.png" alt="仪表盘" width="960">
+
+同一页的深色主题。右上角图标在浅色、深色、跟随系统之间切换。
+
+<img src="docs/images/dashboard-dark.png" alt="仪表盘深色" width="960">
+
+打印机：添加表单、实时状态，以及每个托盘的绑定和颜色映射。
+
+<img src="docs/images/printers.png" alt="打印机" width="960">
+
+扫描局域网：mDNS 扫到设备后点「选择」，只需再填 LAN 访问码。扫不到时改用网段扫描。
+
+<img src="docs/images/printer-scan.png" alt="扫描局域网" width="960">
+
+库存：汇总数字和库存卡片。未绑定颜色的项可以直接「绑定颜色」。
+
+<img src="docs/images/stocks.png" alt="库存" width="960">
+
+新增库存弹层带「拍照识别」，识别结果填进表单后仍可手改。
+
+<img src="docs/images/stock-create.png" alt="新增库存" width="960">
+
+库存详情：剩余、购入与消耗价值，以及可编辑、可冲销的流水。
+
+<img src="docs/images/stock-detail.png" alt="库存详情" width="960">
+
+任务历史与任务详情。详情里可以补录扣料，手工记录可以撤销。
+
+<img src="docs/images/jobs.png" alt="任务历史" width="960">
+
+<img src="docs/images/job-detail.png" alt="任务详情" width="960">
+
+报告、设置、颜色映射、材料调试、离线页。
+
+<img src="docs/images/reports.png" alt="报告" width="960">
+
+<img src="docs/images/settings.png" alt="设置" width="720">
+
+<img src="docs/images/color-mappings.png" alt="颜色映射" width="960">
+
+<img src="docs/images/material-debug.png" alt="材料调试" width="960">
+
+<img src="docs/images/offline.png" alt="离线页" width="720">
+
+### 手机与 iPad
+
+手机底部是六个标签：仪表盘、打印机、库存、任务、报告、设置。宽表在窄屏改成纵向卡片，绑定、删除、查看详情这些按钮留在屏幕里。
+
+<img src="docs/images/dashboard-mobile.png" alt="手机仪表盘" width="280">
+<img src="docs/images/printers-mobile.png" alt="手机打印机" width="280">
+<img src="docs/images/stocks-mobile.png" alt="手机库存" width="280">
+
+<img src="docs/images/jobs-mobile.png" alt="手机任务" width="280">
+<img src="docs/images/reports-mobile.png" alt="手机报告" width="280">
+<img src="docs/images/settings-mobile.png" alt="手机设置" width="280">
+
+iPad 竖屏仍使用底部标签，统计卡变成两列。
+
+<img src="docs/images/stocks-ipad.png" alt="iPad 库存" width="480">
 
 ---
 
-## ✨ 核心功能
+## 核心功能
 
 ### 🖨️ 打印机管理与实时监控
 
 - **局域网自动扫描添加**：一键 mDNS 扫描局域网内的拓竹打印机，自动发现 IP/序列号/型号/固件版本，选中后只需手输 LAN 访问码即可完成添加
 - **打印机接入管理**：支持添加/删除/编辑打印机，IP/序列号/访问码加密存储
-- **实时状态监控**：MQTT 直连打印机，实时显示在线状态、打印进度、当前任务、温度
+- **实时状态监控**：MQTT 直连打印机，实时显示在线状态、打印进度、当前任务和托盘
 - **AMS 托盘信息**：展示当前活动托盘及所有托盘的颜色、材质、剩余量、RFID 标签
 - **托盘手动绑定库存**：每个 AMS 托盘可一键绑定耗材库中的库存项（支持搜索/更改/解绑）
 - **绑定优先结算**：结算解析托盘库存时**优先采用手动绑定**（`binding`），无绑定才回落颜色自动匹配（`auto`）；多品牌冲突、颜色未映射等场景绑定一次即可长期生效
 - **绑定时效与安全**：绑定以作业开始时刻判定（`bound_at <= job.started_at`），打印中途改绑定不影响已开始作业；绑定目标被归档/删除时自动回落自动匹配；库存归档或合并会级联解绑对应托盘
 - **多机管理**：支持多台打印机同时接入，独立线程监控互不干扰
 
-> 📸 打印机管理界面（含新增的「扫描局域网」按钮）：
-> ![打印机管理界面](docs/images/printers.png)
-
-### 📷 拍照 OCR 识别耗材（新增）
+### 拍照 OCR 识别耗材
 
 - **拍照自动识别**：拍摄耗材标签照片，自动识别材质（PLA/PETG/TPU/ABS...）、单卷重量、颜色名、品牌
 - **图像取色**：Canvas 提取图片主色调 RGB，自动填充 `color_hex`，比 OCR 文本颜色名更精确
@@ -29,12 +108,9 @@
 - **颜色自动绑定**：OCR 识别的色值入库时自动创建 AMS 颜色映射，省去二次手动绑定
 - **降级方案**：OCR 识别失败时支持完全手动添加
 
-> 技术栈：Tesseract.js（纯前端 OCR，中英文双语）+ Canvas 取色 + 正则解析
->
-> 📸 桌面端库存页（新增「拍照识别」入口，右上角为三态主题切换按钮）：
-> ![库存页-桌面端](docs/images/stocks-v2.png)
+技术栈：Tesseract.js（纯前端 OCR，中英文双语）+ Canvas 取色 + 正则解析。入口见上方「新增库存」截图。
 
-### 🧵 耗材库存管理
+### 耗材库存管理
 
 - **耗材库录入**：按「材质 + 颜色 + 品牌」唯一键录入，支持同键合并入库（自动累加剩余量）
 - **库存状态跟踪**：自动维护剩余克数、卷数、单价、总价
@@ -42,9 +118,7 @@
 - **颜色绑定**：库存项可绑定 AMS 颜色码，方便打印时按颜色匹配扣减
 - **归档管理**：删除库存只归档不丢历史，支持恢复
 
-![耗材库存界面](docs/images/stocks.png)
-
-### 📊 自动消耗记录与成本统计
+### 自动消耗记录与成本统计
 
 - **三重消耗计算策略**（打印结束时依次尝试）：
   1. 切片文件元数据估算（实际首选，gcode.3mf 解析每色克数）
@@ -56,31 +130,21 @@
 - **消耗记录幂等**：`(job_id, tray_id, segment_idx)` 部分唯一索引，防重复扣减
 - **账本冲正**：支持 void/reversal，数据可恢复
 
-![打印任务历史界面](docs/images/jobs.png)
-
-### 📈 历史查询与报表
+### 历史查询与报表
 
 - **打印任务历史**：记录所有任务详情（状态、时长、起止时间、耗材消耗、gcode 文件）
 - **耗材卷账本**：每个库存项的完整使用流水（采购/调整/消耗/废弃）
-- **消耗统计报表**：按时间、材质、打印机等维度统计耗材使用情况
-- **数据导出**：支持 CSV 导出
+- **消耗统计报表**：按日、按月汇总消耗克数和折合成本
 
-![报表界面](docs/images/reports.png)
+### PWA、自适应与主题
 
-### 📱 PWA 移动端 + 主题切换（新增）
-
-- **可安装到桌面**：支持 PWA 安装到手机主屏 / 桌面，独立窗口运行（standalone 模式）
-- **移动端自适应**：桌面顶部导航 + 移动端底部固定 Tab Bar，自动切换
-- **暗色/亮色/跟随系统**：三态主题切换，next-themes 持久化用户选择，无 FOUC 闪动
-- **安全区适配**：iOS 刘海/Home indicator、Android 状态栏自动避让（`viewport-fit=cover` + `env(safe-area-inset-*)`）
-- **移动端布局适配**：页头按钮组换行、宽表横向滚动、按钮/输入框 40px+ 触控高度、Dialog 最大高度可滚动
-- **离线可用**：Service Worker 预缓存 App Shell，网络不可用时回落 `/offline` 页
-
-> 📸 移动端视图（375px，展示底部 Tab Bar + 暗色主题）：
-> ![移动端库存页](docs/images/mobile-stocks.png)
->
-> 📸 桌面端仪表板：
-> ![仪表板](docs/images/dashboard.png)
+- **可安装**：PWA 安装到手机主屏或桌面后以独立窗口运行
+- **自适应**：宽度小于 1024px（手机、iPad 竖屏）使用底部六个标签；iPad 横屏和桌面使用顶部导航。详情页会保持对应标签选中
+- **主题**：浅色 / 深色 / 跟随系统，选择记在 localStorage（`bbs-theme`）
+- **安全区**：刘海和 Home 指示条用 `viewport-fit=cover` 与 `env(safe-area-inset-*)` 避开；弹层自带关闭按钮
+- **触控**：手机和 iPad 竖屏上按钮、输入框至少 44px；输入框 16px 字号，避免 iOS 聚焦时放大页面
+- **窄屏表格**：打印机托盘、任务、流水、报告在窄屏改成带字段名的卡片，操作按钮不被挤出屏幕
+- **离线**：Service Worker 预缓存应用壳，断网时打开 `/offline`
 
 ---
 
@@ -293,31 +357,9 @@ export DATABASE_URL="postgresql+asyncpg://consumables:consumables@localhost:5432
 
 ---
 
-## 🎨 前端页面导航
+## 前端页面
 
-### 桌面端（顶部导航）
-
-| 菜单 | 路径 | 功能 |
-|---|---|---|
-| 仪表盘 | `/` | 关键统计、快速入口 |
-| 打印机 | `/printers` | 打印机管理、扫描添加、AMS 托盘实时状态、托盘绑定库存 |
-| 库存 | `/stocks` | 耗材库 CRUD、拍照 OCR、颜色绑定、账本 |
-| 任务历史 | `/jobs` | 打印任务、消耗记录、人工纠错 |
-| 报告 | `/reports` | 按时间/材质/打印机维度统计 |
-| 设置 | `/settings` | AMS 颜色映射管理 |
-
-### 移动端（底部 Tab Bar）
-
-6 个 Tab 带图标，固定底部，带安全区 padding，自动避让 iOS 刘海/Home indicator。
-
-### 主题切换
-
-右上角太阳/月亮/笔记本图标，三态循环：
-- ☀️ 浅色
-- 🌙 深色
-- 💻 跟随系统（默认）
-
-主题选择持久化到 localStorage（`bbs-theme`），切换无 FOUC 闪动。
+页面和截图见文首「界面一览」。导航在手机、iPad 竖屏上是底部标签，在 iPad 横屏和桌面上是顶栏。主题按钮在顶栏右侧，循环为浅色、深色、跟随系统。
 
 ---
 
@@ -403,7 +445,7 @@ cd frontend && node scripts/gen-icons.js
 - MQTT 实时监控 + AMS 托盘状态
 - 三重消耗计算策略
 - 账本冲正 + 幂等扣减
-- 报表 + CSV 导出
+- 报表（按日 / 按月）
 
 ---
 

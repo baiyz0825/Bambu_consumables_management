@@ -8,8 +8,10 @@ import { fetchJson } from "../../lib/api";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { DataCell, DataTable } from "../../components/ui/data-table";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { NativeSelect } from "../../components/ui/native-select";
 
 export default function Page() {
   const [items, setItems] = useState([]);
@@ -81,7 +83,7 @@ export default function Page() {
           <h1 className="text-2xl font-semibold tracking-tight">任务历史</h1>
           <p className="text-sm text-muted-foreground">任务历史：可筛选、查看详情、并手工补录扣料。</p>
         </div>
-        <Button variant="outline" onClick={reload} disabled={loading}>
+        <Button variant="outline" onClick={reload} disabled={loading} className="w-full sm:w-auto">
           {loading ? "加载中…" : "刷新"}
         </Button>
       </div>
@@ -92,37 +94,29 @@ export default function Page() {
           <CardDescription>按打印机/状态筛选，支持文件名/任务关键字搜索。</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="grid gap-2">
               <Label>打印机</Label>
-              <select
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                value={printerId}
-                onChange={(e) => setPrinterId(e.target.value)}
-              >
+              <NativeSelect value={printerId} onChange={(e) => setPrinterId(e.target.value)} aria-label="打印机">
                 <option value="">全部</option>
                 {printers.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.alias || p.serial}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div className="grid gap-2">
               <Label>状态</Label>
-              <select
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
+              <NativeSelect value={status} onChange={(e) => setStatus(e.target.value)} aria-label="状态">
                 <option value="">全部</option>
                 <option value="running">运行中</option>
                 <option value="ended">已结束</option>
                 <option value="failed">失败</option>
                 <option value="cancelled">已取消</option>
-              </select>
+              </NativeSelect>
             </div>
-            <div className="grid gap-2 md:col-span-2">
+            <div className="grid gap-2 sm:col-span-2">
               <Label>搜索</Label>
               <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="文件名 / 任务关键字 / 状态" />
             </div>
@@ -136,46 +130,49 @@ export default function Page() {
           <CardDescription>共 {filtered.length} 条（点击进入详情查看扣料与快照）。</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto rounded-md border">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead className="bg-muted/50">
-                <tr className="text-left">
-                  <th className="px-3 py-2">状态</th>
-                  <th className="px-3 py-2">开始时间</th>
-                  <th className="px-3 py-2">结束时间</th>
-                  <th className="px-3 py-2">文件</th>
-                  <th className="px-3 py-2">打印机</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((j) => (
+          <DataTable className="lg:min-w-[640px]">
+            <thead className="bg-muted/50">
+              <tr className="text-left">
+                <th className="px-3 py-2">状态</th>
+                <th className="px-3 py-2">开始时间</th>
+                <th className="px-3 py-2">结束时间</th>
+                <th className="px-3 py-2">文件</th>
+                <th className="px-3 py-2">打印机</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((j) => {
+                const printer = printers.find((p) => p.id === j.printer_id);
+                const printerLabel = printer?.alias || printer?.serial || (j.printer_id ? `${String(j.printer_id).slice(0, 8)}…` : "-");
+                return (
                   <tr key={j.id} className="border-t">
-                    <td className="px-3 py-2">
+                    <DataCell label="状态">
                       <Badge variant={statusVariant(j.status)}>{j.status}</Badge>
-                    </td>
-                    <td className="px-3 py-2">{fmtTime(j.started_at)}</td>
-                    <td className="px-3 py-2">{j.ended_at ? fmtTime(j.ended_at) : "-"}</td>
-                    <td className="max-w-[220px] px-3 py-2">
-                      <Link className="block truncate font-medium hover:underline" href={`/jobs/${j.id}`}>
-                        {j.file_name || "-"}
+                    </DataCell>
+                    <DataCell label="开始时间">{fmtTime(j.started_at)}</DataCell>
+                    <DataCell label="结束时间">{j.ended_at ? fmtTime(j.ended_at) : "-"}</DataCell>
+                    <DataCell label="文件">
+                      <Link className="font-medium hover:underline" href={`/jobs/${j.id}`}>
+                        {j.file_name || "查看详情"}
                       </Link>
-                      {j.job_key ? (
-                        <div className="truncate text-xs text-muted-foreground">{j.job_key}</div>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-2">{String(j.printer_id).slice(0, 8)}…</td>
+                      {j.job_key ? <div className="break-all text-xs text-muted-foreground">{j.job_key}</div> : null}
+                      <Button asChild size="sm" variant="outline" className="mt-2 lg:hidden">
+                        <Link href={`/jobs/${j.id}`}>查看详情</Link>
+                      </Button>
+                    </DataCell>
+                    <DataCell label="打印机">{printerLabel}</DataCell>
                   </tr>
-                ))}
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5}>
-                      暂无数据
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+              {filtered.length === 0 ? (
+                <tr>
+                  <td className="px-3 py-8 text-center text-muted-foreground" colSpan={5}>
+                    暂无数据
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </DataTable>
         </CardContent>
       </Card>
     </div>

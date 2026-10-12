@@ -12,8 +12,10 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
+import { DataCell, DataTable } from "../../../components/ui/data-table";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
+import { NativeSelect } from "../../../components/ui/native-select";
 
 function fmtTime(iso) {
   if (!iso) return "-";
@@ -229,7 +231,7 @@ export default function Page({ params }) {
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
           <Button variant="outline" onClick={reload} disabled={loading}>
             {loading ? "加载中…" : "刷新"}
           </Button>
@@ -237,7 +239,7 @@ export default function Page({ params }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>消耗汇总</CardTitle>
@@ -254,8 +256,8 @@ export default function Page({ params }) {
             <CardDescription>关联打印机 ID（后续可增强为别名显示）。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="font-mono text-sm">{job?.printer_id || "-"}</div>
-            <div className="mt-2 text-sm text-muted-foreground">job_key：{job?.job_key || "-"}</div>
+            <div className="break-all font-mono text-sm">{job?.printer_id || "-"}</div>
+            <div className="mt-2 break-all text-sm text-muted-foreground">job_key：{job?.job_key || "-"}</div>
           </CardContent>
         </Card>
         <Card>
@@ -264,7 +266,7 @@ export default function Page({ params }) {
             <CardDescription>任务开始时的 tray→spool 快照（用于审计）。</CardDescription>
           </CardHeader>
           <CardContent>
-            <pre className="max-h-40 overflow-auto rounded-md border bg-muted/30 p-3 text-xs">
+            <pre className="max-h-40 max-w-full overflow-auto whitespace-pre-wrap break-all rounded-md border bg-muted/30 p-3 text-xs">
               {JSON.stringify(job?.spool_binding_snapshot_json || {}, null, 2)}
             </pre>
           </CardContent>
@@ -320,11 +322,11 @@ export default function Page({ params }) {
                             </Button>
                           </div>
                         ) : null}
-                        <select
-                          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        <NativeSelect
                           value={resolveMap[trayId] || ""}
                           onChange={(e) => setResolveMap((prev) => ({ ...prev, [trayId]: e.target.value }))}
                           disabled={needsMapping}
+                          aria-label={`托盘 ${trayId} 库存项`}
                         >
                           <option value="">选择库存项...</option>
                           {(opts.length ? opts : stocks).map((s) => (
@@ -333,17 +335,17 @@ export default function Page({ params }) {
                               {s.is_archived ? "（已归档）" : ""} - {s.remaining_grams}g
                             </option>
                           ))}
-                        </select>
+                        </NativeSelect>
                       </div>
                     </div>
                   );
                 })}
               </div>
               <div className="mt-3 space-y-2">
-                <label className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <label className="flex min-h-11 cursor-pointer flex-wrap items-center gap-3 text-sm text-muted-foreground">
                   <input
                     type="checkbox"
-                    className="h-4 w-4"
+                    className="h-5 w-5 shrink-0"
                     checked={alsoBind}
                     onChange={(e) => setAlsoBind(e.target.checked)}
                   />
@@ -356,84 +358,86 @@ export default function Page({ params }) {
             </div>
           ) : null}
 
-          <div className="overflow-x-auto rounded-md border">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead className="bg-muted/50">
-                <tr className="text-left">
-                  <th className="px-3 py-2">时间</th>
-                  <th className="px-3 py-2">耗材</th>
-                  <th className="px-3 py-2">克数</th>
-                  <th className="px-3 py-2">来源</th>
-                  <th className="px-3 py-2">置信度</th>
-                  <th className="px-3 py-2">状态/操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cons.map((c) => (
-                  <tr key={c.id} className="border-t">
-                    <td className="px-3 py-2">{fmtTime(c.created_at)}</td>
-                    <td className="px-3 py-2">
-                      {c.stock_id ? (
-                        <>
-                          <Link className="font-medium hover:underline" href={`/stocks/${c.stock_id}`}>
-                            {c.material} · {c.color} · {c.brand}
-                          </Link>
-                          <div className="text-xs text-muted-foreground">
-                            {c.tray_id != null ? `托盘 ${c.tray_id}` : "-"}
-                          </div>
-                        </>
-                      ) : c.spool_id ? (
-                        <>
-                          <Link className="font-medium hover:underline" href={`/spools/${c.spool_id}`}>
-                            {c.spool_name || "料卷"}
-                          </Link>
-                          <div className="text-xs text-muted-foreground">
-                            {c.spool_material} · {c.spool_color}
-                          </div>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 font-medium">{c.grams}</td>
-                    <td className="px-3 py-2">{c.source}</td>
-                    <td className="px-3 py-2">{c.confidence}</td>
-                    <td className="px-3 py-2">
-                      {c.voided_at ? (
-                        <div>
-                          <div className="text-xs text-destructive">已作废</div>
-                          <div className="text-xs text-muted-foreground">
-                            {fmtTime(c.voided_at)}{c.void_reason ? ` · ${c.void_reason}` : ""}
-                          </div>
+          <DataTable className="lg:min-w-[640px]">
+            <thead className="bg-muted/50">
+              <tr className="text-left">
+                <th className="px-3 py-2">时间</th>
+                <th className="px-3 py-2">耗材</th>
+                <th className="px-3 py-2">克数</th>
+                <th className="px-3 py-2">来源</th>
+                <th className="px-3 py-2">置信度</th>
+                <th className="px-3 py-2">状态/操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cons.map((c) => (
+                <tr key={c.id} className="border-t">
+                  <DataCell label="时间">{fmtTime(c.created_at)}</DataCell>
+                  <DataCell label="耗材">
+                    {c.stock_id ? (
+                      <>
+                        <Link className="font-medium hover:underline" href={`/stocks/${c.stock_id}`}>
+                          {c.material} · {c.color} · {c.brand}
+                        </Link>
+                        <div className="text-xs text-muted-foreground">
+                          {c.tray_id != null ? `托盘 ${c.tray_id}` : "-"}
                         </div>
-                      ) : c.source === "manual" ? (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => {
-                            setVoidTarget(c);
-                            voidForm.reset({ reason: "" });
-                            setVoidOpen(true);
-                          }}
-                        >
-                          撤销
-                        </Button>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {cons.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-8 text-center text-muted-foreground" colSpan={6}>
-                      暂无扣料记录
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+                      </>
+                    ) : c.spool_id ? (
+                      <>
+                        <Link className="font-medium hover:underline" href={`/spools/${c.spool_id}`}>
+                          {c.spool_name || "料卷"}
+                        </Link>
+                        <div className="text-xs text-muted-foreground">
+                          {c.spool_material} · {c.spool_color}
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </DataCell>
+                  <DataCell label="克数" valueClassName="font-medium">
+                    {c.grams}
+                  </DataCell>
+                  <DataCell label="来源">{c.source}</DataCell>
+                  <DataCell label="置信度">{c.confidence}</DataCell>
+                  <DataCell label="状态/操作">
+                    {c.voided_at ? (
+                      <div>
+                        <div className="text-xs text-destructive">已作废</div>
+                        <div className="text-xs text-muted-foreground">
+                          {fmtTime(c.voided_at)}
+                          {c.void_reason ? ` · ${c.void_reason}` : ""}
+                        </div>
+                      </div>
+                    ) : c.source === "manual" ? (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="w-full sm:w-auto"
+                        onClick={() => {
+                          setVoidTarget(c);
+                          voidForm.reset({ reason: "" });
+                          setVoidOpen(true);
+                        }}
+                      >
+                        撤销
+                      </Button>
+                    ) : (
+                      "-"
+                    )}
+                  </DataCell>
+                </tr>
+              ))}
+              {cons.length === 0 ? (
+                <tr>
+                  <td className="px-3 py-8 text-center text-muted-foreground" colSpan={6}>
+                    暂无扣料记录
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </DataTable>
         </CardContent>
       </Card>
 
@@ -455,7 +459,7 @@ export default function Page({ params }) {
           >
             <div className="grid gap-2">
               <Label>库存项</Label>
-              <select className="h-9 rounded-md border border-input bg-background px-3 text-sm" {...form.register("stock_id")}>
+              <NativeSelect aria-label="库存项" {...form.register("stock_id")}>
                 <option value="">请选择...</option>
                 {stocks.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -463,7 +467,7 @@ export default function Page({ params }) {
                     {s.is_archived ? "（已归档）" : ""} - {s.remaining_grams}g
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               {form.formState.errors.stock_id ? <div className="text-xs text-destructive">{form.formState.errors.stock_id.message}</div> : null}
             </div>
             <div className="grid gap-2">

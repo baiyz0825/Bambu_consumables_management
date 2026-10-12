@@ -88,6 +88,39 @@
   .table-wrap {
     @apply overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0;
   }
+
+  /*
+   * data-stack：手机与 iPad 竖屏（<1024）把表格行改成纵向卡片，
+   * 避免操作列被挤出屏幕；lg 及以上保持 table 布局。
+   */
+  @media (max-width: 1023px) {
+    .data-stack {
+      min-width: 0 !important;
+    }
+
+    .data-stack thead {
+      display: none;
+    }
+
+    .data-stack,
+    .data-stack tbody,
+    .data-stack tr,
+    .data-stack td {
+      display: block;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .data-stack tr {
+      border-top-width: 1px;
+      padding-top: 0.25rem;
+      padding-bottom: 0.25rem;
+    }
+
+    .data-stack td[colspan] {
+      text-align: center;
+    }
+  }
 }
 
 @layer utilities {

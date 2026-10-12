@@ -10,6 +10,7 @@ import { apiBaseUrl, fetchJson } from "../../lib/api";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { DataCell, DataTable } from "../../components/ui/data-table";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { PrinterScanDialog } from "../../components/printer-scan-dialog";
@@ -302,14 +303,14 @@ export default function Page() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">打印机</h1>
           <p className="text-sm text-muted-foreground">
             添加/查看打印机。耗材不再按“具体卷”绑定托盘，而是按「材质+颜色+品牌」的库存项扣减；第三方品牌读不到时会在作业里提示归因。
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap lg:justify-end">
           <Button variant="outline" onClick={() => setScanOpen(true)}>
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -356,7 +357,7 @@ export default function Page() {
               }
             })}
           >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
               <div className="grid gap-2">
                 <Label>IP *</Label>
                 <Input placeholder="IP地址，例如：192.168.x.x" {...form.register("ip")} />
@@ -384,7 +385,7 @@ export default function Page() {
               </div>
             </div>
             <div>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
+              <Button type="submit" className="w-full sm:w-auto" disabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting ? "提交中…" : "添加"}
               </Button>
             </div>
@@ -441,11 +442,11 @@ export default function Page() {
                       <span>{p.alias || p.serial}</span>
                       <Badge variant={statusVariant(p.status)}>{p.status}</Badge>
                     </CardTitle>
-                    <CardDescription>
+                    <CardDescription className="break-all">
                       {p.ip} · {p.serial} · 最后连接：{p.last_seen ? fmtTime(p.last_seen) : "-"}
                     </CardDescription>
                   </div>
-                  <div className="text-sm">
+                  <div className="min-w-0 break-words text-sm">
                     <div className="font-medium">{formatGcodeState(gcodeState)}</div>
                     <div className="text-muted-foreground">{progress == null ? "-" : `进度 ${progress}%`}</div>
                     <div className="text-muted-foreground">{taskId ? `${taskId}` : "-"} {taskName ? `· ${taskName}` : ""}</div>
@@ -471,119 +472,122 @@ export default function Page() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="text-sm text-muted-foreground">AMS 托盘信息（材质/颜色/剩余）。系统会尝试匹配到唯一库存项；匹配不到会在作业里提示归因。</div>
-                <div className="overflow-x-auto rounded-md border">
-                  <table className="w-full min-w-[720px] text-sm">
-                    <thead className="bg-muted/50">
-                      <tr className="text-left">
-                        <th className="px-3 py-2">托盘</th>
-                        <th className="px-3 py-2">材质</th>
-                        <th className="px-3 py-2">颜色</th>
-                        <th className="px-3 py-2">剩余(%)</th>
-                        <th className="px-3 py-2">来源</th>
-                        <th className="px-3 py-2">库存匹配</th>
-                        <th className="px-3 py-2">库存绑定</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayTrays.map((t) => {
-                        const trayId = t?.id;
-                        if (trayId == null) return null;
-                        const key = `${p.id}:${trayId}`;
-                        // 手动绑定优先于自动颜色匹配；未绑定时回落到自动匹配结果
-                        const binding = trayMappings[key] || null;
-                        const isActiveTray = trayNow != null && trayNow !== 255 && Number(trayNow) === Number(trayId);
-                        const isMissing = Boolean(t?.__missing);
-                        const pct = normalizeRemainPct(t?.remain);
-                        const material = isMissing ? "-" : t?.type || "-";
-                        const colorHex = isMissing ? null : normalizeColorHex(t?.color);
-                        const mappedName = colorHex ? colorMappings[colorHex] || null : null;
-                        const colorKey = mappedName || (!colorHex && !isMissing && typeof t?.color === "string" ? t.color : null);
-                        const colorDisplay = isMissing ? "-" : mappedName ? `${mappedName} (${colorHex})` : colorHex || t?.color || "-";
-                        const official = !isMissing && isOfficialTray(t);
-                        const candidates = stocks.filter(
-                          (s) =>
-                            s.material === material &&
-                            (colorKey ? s.color === colorKey : false) &&
-                            (official ? s.brand === "拓竹" : s.brand !== "拓竹")
-                        );
-                        const matched = candidates.length === 1 ? candidates[0] : null;
-                        const matchText =
-                          isMissing
-                            ? "-"
-                            : colorHex && !mappedName
-                            ? "颜色未映射（先映射）"
-                            : matched
-                              ? `${matched.brand}（剩余 ${matched.remaining_grams}g）`
-                              : candidates.length > 1
-                                ? `多品牌冲突：${candidates.map((c) => c.brand).join(" / ")}（打印后归因）`
-                                : "未匹配（去库存新增）";
-                        return (
-                          <tr key={key} className={`border-t ${isActiveTray ? "bg-accent/30" : ""}`}>
-                            <td className="px-3 py-2 font-medium">
-                              托盘 {trayId} {isActiveTray ? <span className="ml-2 text-xs text-muted-foreground">(正在使用)</span> : null}
-                            </td>
-                            <td className="px-3 py-2">{material}</td>
-                            <td className="px-3 py-2">
-                              <div>{colorDisplay}</div>
-                              {colorHex && !mappedName && !isMissing ? (
-                                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-                                  <Input
-                                    className="h-9 min-w-[9rem] flex-1 sm:h-8"
-                                    placeholder="映射为：白色/灰色/…"
-                                    value={colorDraftByHex[colorHex] || ""}
-                                    onChange={(e) =>
-                                      setColorDraftByHex((prev) => ({ ...prev, [colorHex]: e.target.value }))
-                                    }
-                                  />
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={savingColorHex === colorHex}
-                                    onClick={() => saveColorMapping(colorHex)}
-                                  >
-                                    {savingColorHex === colorHex ? "保存中…" : "保存"}
-                                  </Button>
-                                </div>
-                              ) : null}
-                            </td>
-                            <td className="px-3 py-2">{isMissing ? "-" : pct == null ? (t?.remain == null ? "-" : t.remain) : `${Math.round(pct)}%`}</td>
-                            <td className="px-3 py-2">{isMissing ? "空槽/未上报" : official ? "拓竹" : "第三方/未知"}</td>
-                            <td className="px-3 py-2">{matchText}</td>
-                            <td className="px-3 py-2">
-                              {isMissing ? (
-                                <span className="text-xs text-muted-foreground">-</span>
-                              ) : binding?.stock_id ? (
-                                <div className="space-y-1">
-                                  <div className="text-xs font-medium">
-                                    {binding.stock_material} · {binding.stock_color}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {binding.stock_brand} · 剩余 {binding.stock_remaining_grams}g
-                                  </div>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => openBindDialog(p.id, trayId)}
-                                  >
-                                    更改绑定
-                                  </Button>
-                                </div>
-                              ) : (
+                <DataTable className="lg:min-w-[720px]">
+                  <thead className="bg-muted/50">
+                    <tr className="text-left">
+                      <th className="px-3 py-2">托盘</th>
+                      <th className="px-3 py-2">材质</th>
+                      <th className="px-3 py-2">颜色</th>
+                      <th className="px-3 py-2">剩余(%)</th>
+                      <th className="px-3 py-2">来源</th>
+                      <th className="px-3 py-2">库存匹配</th>
+                      <th className="px-3 py-2">库存绑定</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayTrays.map((t) => {
+                      const trayId = t?.id;
+                      if (trayId == null) return null;
+                      const key = `${p.id}:${trayId}`;
+                      // 手动绑定优先于自动颜色匹配；未绑定时回落到自动匹配结果
+                      const binding = trayMappings[key] || null;
+                      const isActiveTray = trayNow != null && trayNow !== 255 && Number(trayNow) === Number(trayId);
+                      const isMissing = Boolean(t?.__missing);
+                      const pct = normalizeRemainPct(t?.remain);
+                      const material = isMissing ? "-" : t?.type || "-";
+                      const colorHex = isMissing ? null : normalizeColorHex(t?.color);
+                      const mappedName = colorHex ? colorMappings[colorHex] || null : null;
+                      const colorKey = mappedName || (!colorHex && !isMissing && typeof t?.color === "string" ? t.color : null);
+                      const colorDisplay = isMissing ? "-" : mappedName ? `${mappedName} (${colorHex})` : colorHex || t?.color || "-";
+                      const official = !isMissing && isOfficialTray(t);
+                      const candidates = stocks.filter(
+                        (s) =>
+                          s.material === material &&
+                          (colorKey ? s.color === colorKey : false) &&
+                          (official ? s.brand === "拓竹" : s.brand !== "拓竹")
+                      );
+                      const matched = candidates.length === 1 ? candidates[0] : null;
+                      const matchText =
+                        isMissing
+                          ? "-"
+                          : colorHex && !mappedName
+                          ? "颜色未映射（先映射）"
+                          : matched
+                            ? `${matched.brand}（剩余 ${matched.remaining_grams}g）`
+                            : candidates.length > 1
+                              ? `多品牌冲突：${candidates.map((c) => c.brand).join(" / ")}（打印后归因）`
+                              : "未匹配（去库存新增）";
+                      const remainText = isMissing ? "-" : pct == null ? (t?.remain == null ? "-" : t.remain) : `${Math.round(pct)}%`;
+                      return (
+                        <tr key={key} className={`border-t ${isActiveTray ? "bg-accent/30" : ""}`}>
+                          <DataCell label="托盘" valueClassName="font-medium">
+                            托盘 {trayId} {isActiveTray ? <span className="ml-2 text-xs font-normal text-muted-foreground">(正在使用)</span> : null}
+                          </DataCell>
+                          <DataCell label="材质">{material}</DataCell>
+                          <DataCell label="颜色">
+                            <div>{colorDisplay}</div>
+                            {colorHex && !mappedName && !isMissing ? (
+                              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <Input
+                                  className="min-w-0 flex-1"
+                                  placeholder="映射为：白色/灰色/…"
+                                  value={colorDraftByHex[colorHex] || ""}
+                                  onChange={(e) =>
+                                    setColorDraftByHex((prev) => ({ ...prev, [colorHex]: e.target.value }))
+                                  }
+                                  aria-label={`为 ${colorHex} 填写颜色名`}
+                                />
                                 <Button
                                   size="sm"
                                   variant="outline"
+                                  className="w-full sm:w-auto"
+                                  disabled={savingColorHex === colorHex}
+                                  onClick={() => saveColorMapping(colorHex)}
+                                >
+                                  {savingColorHex === colorHex ? "保存中…" : "保存映射"}
+                                </Button>
+                              </div>
+                            ) : null}
+                          </DataCell>
+                          <DataCell label="剩余(%)">{remainText}</DataCell>
+                          <DataCell label="来源">{isMissing ? "空槽/未上报" : official ? "拓竹" : "第三方/未知"}</DataCell>
+                          <DataCell label="库存匹配">{matchText}</DataCell>
+                          <DataCell label="库存绑定">
+                            {isMissing ? (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            ) : binding?.stock_id ? (
+                              <div className="space-y-1">
+                                <div className="text-xs font-medium">
+                                  {binding.stock_material} · {binding.stock_color}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {binding.stock_brand} · 剩余 {binding.stock_remaining_grams}g
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="w-full sm:w-auto"
                                   onClick={() => openBindDialog(p.id, trayId)}
                                 >
-                                  绑定库存
+                                  更改绑定
                                 </Button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full sm:w-auto"
+                                onClick={() => openBindDialog(p.id, trayId)}
+                              >
+                                绑定库存
+                              </Button>
+                            )}
+                          </DataCell>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </DataTable>
               </CardContent>
             </Card>
           );

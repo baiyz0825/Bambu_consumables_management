@@ -7,6 +7,7 @@ import { apiBaseUrl, fetchJson } from "../lib/api";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { DataCell, DataTable } from "../components/ui/data-table";
 
 export default function Page() {
   const [printers, setPrinters] = useState([]);
@@ -113,12 +114,12 @@ export default function Page() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">仪表盘</h1>
           <p className="text-sm text-muted-foreground">概览：在线状态、正在打印、近期消耗趋势与快捷入口。</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap">
           <Button asChild variant="outline">
             <Link href="/printers">查看打印机</Link>
           </Button>
@@ -131,7 +132,7 @@ export default function Page() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">在线打印机</CardTitle>
@@ -181,37 +182,39 @@ export default function Page() {
             <CardDescription>显示当前运行中的打印机与进度。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto rounded-md border">
-              <table className="w-full min-w-[480px] text-sm">
-                <thead className="bg-muted/50">
-                  <tr className="text-left">
-                    <th className="px-3 py-2">打印机</th>
-                    <th className="px-3 py-2">进度</th>
-                    <th className="px-3 py-2">任务</th>
-                    <th className="px-3 py-2">状态</th>
+            <DataTable>
+              <thead className="bg-muted/50">
+                <tr className="text-left">
+                  <th className="px-3 py-2">打印机</th>
+                  <th className="px-3 py-2">进度</th>
+                  <th className="px-3 py-2">任务</th>
+                  <th className="px-3 py-2">状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                {printingPrinters.map(({ p, progress, file }) => (
+                  <tr key={p.id} className="border-t">
+                    <DataCell label="打印机" valueClassName="font-medium">
+                      <Link className="hover:underline" href="/printers">
+                        {p.alias || p.serial}
+                      </Link>
+                    </DataCell>
+                    <DataCell label="进度">{progress == null ? "-" : `${progress}%`}</DataCell>
+                    <DataCell label="任务">{file || "-"}</DataCell>
+                    <DataCell label="状态">
+                      <Badge>运行中</Badge>
+                    </DataCell>
                   </tr>
-                </thead>
-                <tbody>
-                  {printingPrinters.map(({ p, progress, file }) => (
-                    <tr key={p.id} className="border-t">
-                      <td className="px-3 py-2 font-medium">{p.alias || p.serial}</td>
-                      <td className="px-3 py-2">{progress == null ? "-" : `${progress}%`}</td>
-                      <td className="max-w-[180px] truncate px-3 py-2">{file || "-"}</td>
-                      <td className="px-3 py-2">
-                        <Badge>运行中</Badge>
-                      </td>
-                    </tr>
-                  ))}
-                  {printingPrinters.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
-                        当前没有正在打印的任务
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
+                ))}
+                {printingPrinters.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
+                      当前没有正在打印的任务
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </DataTable>
           </CardContent>
         </Card>
 
@@ -221,33 +224,33 @@ export default function Page() {
             <CardDescription>按天汇总（g）。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto rounded-md border">
-              <table className="w-full min-w-[360px] text-sm">
-                <thead className="bg-muted/50">
-                  <tr className="text-left">
-                    <th className="px-3 py-2">日期</th>
-                    <th className="px-3 py-2">克数</th>
-                    <th className="px-3 py-2">成本估算</th>
+            <DataTable>
+              <thead className="bg-muted/50">
+                <tr className="text-left">
+                  <th className="px-3 py-2">日期</th>
+                  <th className="px-3 py-2">克数</th>
+                  <th className="px-3 py-2">成本估算</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(summary?.daily || []).map((r) => (
+                  <tr key={r.day} className="border-t">
+                    <DataCell label="日期">{r.day}</DataCell>
+                    <DataCell label="克数" valueClassName="font-medium">
+                      {r.grams}
+                    </DataCell>
+                    <DataCell label="成本估算">{r.cost_est}</DataCell>
                   </tr>
-                </thead>
-                <tbody>
-                  {(summary?.daily || []).map((r) => (
-                    <tr key={r.day} className="border-t">
-                      <td className="px-3 py-2">{r.day}</td>
-                      <td className="px-3 py-2 font-medium">{r.grams}</td>
-                      <td className="px-3 py-2">{r.cost_est}</td>
-                    </tr>
-                  ))}
-                  {(summary?.daily || []).length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="px-3 py-8 text-center text-muted-foreground">
-                        暂无数据
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
+                ))}
+                {(summary?.daily || []).length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="px-3 py-8 text-center text-muted-foreground">
+                      暂无数据
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </DataTable>
           </CardContent>
         </Card>
       </div>

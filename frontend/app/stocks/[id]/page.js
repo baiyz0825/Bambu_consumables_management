@@ -12,6 +12,7 @@ import { ApiError, fetchJson } from "../../../lib/api";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
+import { DataCell, DataTable } from "../../../components/ui/data-table";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 
@@ -276,19 +277,19 @@ export default function Page({ params }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
           <div className="text-sm text-muted-foreground">
             <Link className="hover:underline" href="/stocks">
               库存
             </Link>{" "}
             / 详情
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="break-words text-2xl font-semibold tracking-tight">
             {stock ? `${stock.material} · ${stock.color} · ${stock.brand}` : "库存详情"}
           </h1>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap lg:justify-end">
           <Button variant="outline" onClick={reload} disabled={loading}>
             {loading ? "加载中…" : "刷新"}
           </Button>
@@ -311,7 +312,7 @@ export default function Page({ params }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
         <Card>
           <CardHeader>
             <CardTitle>剩余</CardTitle>
@@ -344,7 +345,7 @@ export default function Page({ params }) {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <Card>
           <CardHeader>
             <CardTitle>累计购入总价值</CardTitle>
@@ -401,35 +402,34 @@ export default function Page({ params }) {
           <CardDescription>自动扣料与手工盘点都会写入这里。</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto rounded-md border">
-            <table className="w-full min-w-[760px] text-sm">
-              <thead className="bg-muted/50">
-                <tr className="text-left">
-                  <th className="px-3 py-2">时间</th>
-                  <th className="px-3 py-2">变动(g)</th>
-                  <th className="px-3 py-2">卷数</th>
-                  <th className="px-3 py-2">单价</th>
-                  <th className="px-3 py-2">总价</th>
-                  <th className="px-3 py-2">带料盘</th>
-                  <th className="px-3 py-2">料盘变动</th>
-                  <th className="px-3 py-2">备注</th>
-                  <th className="px-3 py-2">作业</th>
-                  <th className="px-3 py-2">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ledger.map((r, idx) => (
-                  <tr key={`${r.at}-${idx}`} className="border-t">
-                    <td className="px-3 py-2">{fmtTime(r.at)}</td>
-                    <td className="px-3 py-2 font-medium">{r.grams}</td>
-                    <td className="px-3 py-2">{typeof r.rolls_count === "number" ? r.rolls_count : "-"}</td>
-                    <td className="px-3 py-2">{typeof r.price_per_roll === "number" ? r.price_per_roll : "-"}</td>
-                    <td className="px-3 py-2">{typeof r.price_total === "number" ? r.price_total : "-"}</td>
-                    <td className="px-3 py-2">
-                      {typeof r.has_tray === "boolean" ? (r.has_tray ? "是" : "否") : "-"}
-                    </td>
-                    <td className="px-3 py-2">{typeof r.tray_delta === "number" ? r.tray_delta : "-"}</td>
-                    <td className="px-3 py-2">
+          <DataTable className="lg:min-w-[760px]">
+            <thead className="bg-muted/50">
+              <tr className="text-left">
+                <th className="px-3 py-2">时间</th>
+                <th className="px-3 py-2">变动(g)</th>
+                <th className="px-3 py-2">卷数</th>
+                <th className="px-3 py-2">单价</th>
+                <th className="px-3 py-2">总价</th>
+                <th className="px-3 py-2">带料盘</th>
+                <th className="px-3 py-2">料盘变动</th>
+                <th className="px-3 py-2">备注</th>
+                <th className="px-3 py-2">作业</th>
+                <th className="px-3 py-2">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ledger.map((r, idx) => (
+                <tr key={`${r.at}-${idx}`} className="border-t">
+                  <DataCell label="时间">{fmtTime(r.at)}</DataCell>
+                  <DataCell label="变动(g)" valueClassName="font-medium">
+                    {r.grams}
+                  </DataCell>
+                  <DataCell label="卷数">{typeof r.rolls_count === "number" ? r.rolls_count : "-"}</DataCell>
+                  <DataCell label="单价">{typeof r.price_per_roll === "number" ? r.price_per_roll : "-"}</DataCell>
+                  <DataCell label="总价">{typeof r.price_total === "number" ? r.price_total : "-"}</DataCell>
+                  <DataCell label="带料盘">{typeof r.has_tray === "boolean" ? (r.has_tray ? "是" : "否") : "-"}</DataCell>
+                  <DataCell label="料盘变动">{typeof r.tray_delta === "number" ? r.tray_delta : "-"}</DataCell>
+                  <DataCell label="备注">
                       {r.voided_at ? (
                         <div>
                           <div className="text-xs text-destructive">已作废</div>
@@ -441,13 +441,22 @@ export default function Page({ params }) {
                       ) : (
                         r.note || "-"
                       )}
-                    </td>
-                    <td className="px-3 py-2">{r.job_id ? <Link className="hover:underline" href={`/jobs/${r.job_id}`}>{String(r.job_id).slice(0, 8)}…</Link> : "-"}</td>
-                    <td className="px-3 py-2">
+                    </DataCell>
+                    <DataCell label="作业">
+                      {r.job_id ? (
+                        <Link className="hover:underline" href={`/jobs/${r.job_id}`}>
+                          查看作业
+                        </Link>
+                      ) : (
+                        "-"
+                      )}
+                    </DataCell>
+                    <DataCell label="操作">
                       {r.voided_at ? null : (r.kind === "adjustment") ? (
                         <Button
                           variant="destructive"
                           size="sm"
+                          className="w-full sm:w-auto"
                           onClick={() => {
                             setVoidTarget({ kind: "adjustment", row: r });
                             voidForm.reset({ reason: "" });
@@ -463,6 +472,7 @@ export default function Page({ params }) {
                           <Button
                             variant="destructive"
                             size="sm"
+                            className="w-full sm:w-auto"
                             onClick={() => {
                               setVoidTarget({ kind: "stock_consumption", row: r, consumptionId: cid });
                               voidForm.reset({ reason: "" });
@@ -476,6 +486,7 @@ export default function Page({ params }) {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="w-full sm:w-auto"
                           onClick={() => {
                             setEditRow(r);
                             editForm.reset({
@@ -492,7 +503,7 @@ export default function Page({ params }) {
                           编辑
                         </Button>
                       ) : null}
-                    </td>
+                    </DataCell>
                   </tr>
                 ))}
                 {ledger.length === 0 ? (
@@ -503,8 +514,7 @@ export default function Page({ params }) {
                   </tr>
                 ) : null}
               </tbody>
-            </table>
-          </div>
+          </DataTable>
         </CardContent>
       </Card>
 

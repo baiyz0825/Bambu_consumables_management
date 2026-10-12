@@ -7,6 +7,7 @@ import Link from "next/link";
 import { fetchJson } from "../../../lib/api";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
+import { DataCell, DataTable } from "../../../components/ui/data-table";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 
@@ -94,7 +95,7 @@ export default function Page() {
             用于调试材料识别和扣除问题的工具集
           </p>
         </div>
-        <Button variant="outline" onClick={loadColorMappings} disabled={loading}>
+        <Button variant="outline" onClick={loadColorMappings} disabled={loading} className="w-full sm:w-auto">
           {loading ? "加载中…" : "刷新"}
         </Button>
       </div>
@@ -119,7 +120,7 @@ export default function Page() {
               />
             </div>
             <div className="flex items-end">
-              <Button onClick={resolveColorHex} disabled={loading}>
+              <Button onClick={resolveColorHex} disabled={loading} className="w-full md:w-auto">
                 解析颜色码
               </Button>
             </div>
@@ -143,8 +144,8 @@ export default function Page() {
               {colorResolution.matching_stocks && colorResolution.matching_stocks.length > 0 && (
                 <div>
                   <h4 className="font-medium">匹配的库存</h4>
-                  <div className="mt-2 overflow-auto rounded-md border">
-                    <table className="w-full min-w-[480px] text-sm">
+                  <div className="mt-2">
+                    <DataTable>
                       <thead className="bg-muted/50">
                         <tr className="text-left">
                           <th className="px-3 py-2">材料</th>
@@ -156,14 +157,14 @@ export default function Page() {
                       <tbody>
                         {colorResolution.matching_stocks.map((stock) => (
                           <tr key={stock.id} className="border-t">
-                            <td className="px-3 py-2">{stock.material}</td>
-                            <td className="px-3 py-2">{stock.color}</td>
-                            <td className="px-3 py-2">{stock.brand}</td>
-                            <td className="px-3 py-2">{stock.remaining_grams}</td>
+                            <DataCell label="材料">{stock.material}</DataCell>
+                            <DataCell label="颜色">{stock.color}</DataCell>
+                            <DataCell label="品牌">{stock.brand}</DataCell>
+                            <DataCell label="剩余(g)">{stock.remaining_grams}</DataCell>
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </DataTable>
                   </div>
                 </div>
               )}
@@ -181,7 +182,7 @@ export default function Page() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="material">材料</Label>
               <Input
@@ -200,8 +201,8 @@ export default function Page() {
                 onChange={(e) => setColor(e.target.value)}
               />
             </div>
-            <div className="flex items-end">
-              <Button onClick={searchStocks} disabled={loading}>
+            <div className="flex items-end sm:col-span-2">
+              <Button onClick={searchStocks} disabled={loading} className="w-full sm:w-auto">
                 查询库存
               </Button>
             </div>
@@ -210,8 +211,8 @@ export default function Page() {
           {stocks.length > 0 && (
             <div className="mt-4">
               <h4 className="font-medium">查询结果 ({stocks.length}条)</h4>
-              <div className="mt-2 overflow-auto rounded-md border">
-                <table className="w-full text-sm">
+              <div className="mt-2">
+                <DataTable className="lg:min-w-[640px]">
                   <thead className="bg-muted/50">
                     <tr className="text-left">
                       <th className="px-3 py-2">材料</th>
@@ -225,18 +226,18 @@ export default function Page() {
                   <tbody>
                     {stocks.map((stock) => (
                       <tr key={stock.id} className="border-t">
-                        <td className="px-3 py-2">{stock.material}</td>
-                        <td className="px-3 py-2">{stock.color}</td>
-                        <td className="px-3 py-2">{stock.brand}</td>
-                        <td className="px-3 py-2">{stock.remaining_grams}</td>
-                        <td className="px-3 py-2">{stock.is_archived ? "是" : "否"}</td>
-                        <td className="px-3 py-2">
+                        <DataCell label="材料">{stock.material}</DataCell>
+                        <DataCell label="颜色">{stock.color}</DataCell>
+                        <DataCell label="品牌">{stock.brand}</DataCell>
+                        <DataCell label="剩余(g)">{stock.remaining_grams}</DataCell>
+                        <DataCell label="归档">{stock.is_archived ? "是" : "否"}</DataCell>
+                        <DataCell label="更新时间">
                           {stock.updated_at ? new Date(stock.updated_at).toLocaleString() : "-"}
-                        </td>
+                        </DataCell>
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
               {stocks.length > 1 && (
                 <div className="mt-4 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
@@ -259,39 +260,39 @@ export default function Page() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-auto rounded-md border">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr className="text-left">
-                  <th className="px-3 py-2">颜色码</th>
-                  <th className="px-3 py-2">颜色名</th>
-                  <th className="px-3 py-2">更新时间</th>
+          <DataTable>
+            <thead className="bg-muted/50">
+              <tr className="text-left">
+                <th className="px-3 py-2">颜色码</th>
+                <th className="px-3 py-2">颜色名</th>
+                <th className="px-3 py-2">更新时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              {colorMappings.map((mapping) => (
+                <tr key={mapping.id} className="border-t">
+                  <DataCell label="颜色码" valueClassName="font-mono">
+                    {mapping.color_hex}
+                  </DataCell>
+                  <DataCell label="颜色名">{mapping.color_name}</DataCell>
+                  <DataCell label="更新时间">
+                    {mapping.updated_at ? new Date(mapping.updated_at).toLocaleString() : "-"}
+                  </DataCell>
                 </tr>
-              </thead>
-              <tbody>
-                {colorMappings.map((mapping) => (
-                  <tr key={mapping.id} className="border-t">
-                    <td className="px-3 py-2 font-mono">{mapping.color_hex}</td>
-                    <td className="px-3 py-2">{mapping.color_name}</td>
-                    <td className="px-3 py-2">
-                      {mapping.updated_at ? new Date(mapping.updated_at).toLocaleString() : "-"}
-                    </td>
-                  </tr>
-                ))}
-                {colorMappings.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="px-3 py-8 text-center text-muted-foreground">
-                      暂无颜色映射。前往{" "}
-                      <Link href="/settings/color-mappings" className="text-primary hover:underline">
-                        颜色映射设置
-                      </Link>{" "}
-                      添加映射。
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              ))}
+              {colorMappings.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-3 py-8 text-center text-muted-foreground">
+                    暂无颜色映射。前往{" "}
+                    <Link href="/settings/color-mappings" className="font-medium underline underline-offset-4">
+                      颜色映射设置
+                    </Link>{" "}
+                    添加映射。
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </DataTable>
         </CardContent>
       </Card>
     </div>

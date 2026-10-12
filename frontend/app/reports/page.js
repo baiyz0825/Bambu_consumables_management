@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { DataCell, DataTable } from "../../components/ui/data-table";
 import { fetchJson } from "../../lib/api";
 
 /** 数字格式化：非有限值显示 "-"，否则按指定小数位输出。 */
@@ -67,35 +68,33 @@ export default function Page() {
           <CardDescription>按日聚合的消耗克数与折合成本</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto rounded-md border">
-            <table className="w-full min-w-[420px] text-sm">
-              <thead className="bg-muted/50">
-                <tr className="text-left">
-                  <th className="px-3 py-2">日期</th>
-                  <th className="px-3 py-2">消耗(克)</th>
-                  <th className="px-3 py-2">折合成本(元)</th>
-                  <th className="px-3 py-2">不可计价(克)</th>
+          <DataTable>
+            <thead className="bg-muted/50">
+              <tr className="text-left">
+                <th className="px-3 py-2">日期</th>
+                <th className="px-3 py-2">消耗(克)</th>
+                <th className="px-3 py-2">折合成本(元)</th>
+                <th className="px-3 py-2">不可计价(克)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {daily.map((r) => (
+                <tr key={r.day} className="border-t">
+                  <DataCell label="日期">{r.day}</DataCell>
+                  <DataCell label="消耗(克)">{fmtNum(r.grams_total)}</DataCell>
+                  <DataCell label="折合成本(元)">{fmtNum(r.cost_total, 2)}</DataCell>
+                  <DataCell label="不可计价(克)">{fmtNum(r.unpriced_grams)}</DataCell>
                 </tr>
-              </thead>
-              <tbody>
-                {daily.map((r) => (
-                  <tr key={r.day} className="border-t">
-                    <td className="px-3 py-2">{r.day}</td>
-                    <td className="px-3 py-2">{fmtNum(r.grams_total)}</td>
-                    <td className="px-3 py-2">{fmtNum(r.cost_total, 2)}</td>
-                    <td className="px-3 py-2">{fmtNum(r.unpriced_grams)}</td>
-                  </tr>
-                ))}
-                {daily.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-3 py-6 text-center text-sm text-muted-foreground">
-                      暂无数据
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+              ))}
+              {daily.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    暂无数据
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </DataTable>
         </CardContent>
       </Card>
 
@@ -105,33 +104,31 @@ export default function Page() {
           <CardDescription>按月聚合的消耗克数与成本估算</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto rounded-md border">
-            <table className="w-full min-w-[360px] text-sm">
-              <thead className="bg-muted/50">
-                <tr className="text-left">
-                  <th className="px-3 py-2">月份</th>
-                  <th className="px-3 py-2">克数</th>
-                  <th className="px-3 py-2">成本估算</th>
+          <DataTable>
+            <thead className="bg-muted/50">
+              <tr className="text-left">
+                <th className="px-3 py-2">月份</th>
+                <th className="px-3 py-2">克数</th>
+                <th className="px-3 py-2">成本估算</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthly.map((r) => (
+                <tr key={r.month} className="border-t">
+                  <DataCell label="月份">{r.month}</DataCell>
+                  <DataCell label="克数">{fmtNum(r.grams)}</DataCell>
+                  <DataCell label="成本估算">{fmtNum(r.cost_est, 2)}</DataCell>
                 </tr>
-              </thead>
-              <tbody>
-                {monthly.map((r) => (
-                  <tr key={r.month} className="border-t">
-                    <td className="px-3 py-2">{r.month}</td>
-                    <td className="px-3 py-2">{fmtNum(r.grams)}</td>
-                    <td className="px-3 py-2">{fmtNum(r.cost_est, 2)}</td>
-                  </tr>
-                ))}
-                {monthly.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="px-3 py-6 text-center text-sm text-muted-foreground">
-                      暂无数据
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+              ))}
+              {monthly.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    暂无数据
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </DataTable>
         </CardContent>
       </Card>
     </div>

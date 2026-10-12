@@ -10,6 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { fetchJson } from "../../../lib/api";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
+import { DataCell, DataTable } from "../../../components/ui/data-table";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 
@@ -65,7 +66,7 @@ export default function Page() {
             把 AMS 读到的颜色码（如 FFFFFF/FFFFFFFF）映射成库存使用的颜色名（如 白色/灰色），用于自动匹配与扣减。
           </p>
         </div>
-        <Button variant="outline" onClick={reload} disabled={loading}>
+        <Button variant="outline" onClick={reload} disabled={loading} className="w-full sm:w-auto">
           {loading ? "加载中…" : "刷新"}
         </Button>
       </div>
@@ -97,7 +98,7 @@ export default function Page() {
               }
             })}
           >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="grid gap-2">
                 <Label>颜色码 *</Label>
                 <Input placeholder="FFFFFF 或 FFFFFFFF 或 #FFFFFF" {...form.register("color_hex")} />
@@ -112,8 +113,8 @@ export default function Page() {
                   <div className="text-xs text-destructive">{form.formState.errors.color_name.message}</div>
                 ) : null}
               </div>
-              <div className="flex items-end">
-                <Button type="submit" disabled={form.formState.isSubmitting}>
+              <div className="flex items-end sm:col-span-2 lg:col-span-1">
+                <Button type="submit" disabled={form.formState.isSubmitting} className="w-full sm:w-auto">
                   {form.formState.isSubmitting ? "提交中…" : "保存"}
                 </Button>
               </div>
@@ -128,33 +129,35 @@ export default function Page() {
           <CardDescription>按更新时间倒序。</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-auto rounded-md border">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr className="text-left">
-                  <th className="px-3 py-2">颜色码</th>
-                  <th className="px-3 py-2">颜色名</th>
-                  <th className="px-3 py-2">更新时间</th>
+          <DataTable>
+            <thead className="bg-muted/50">
+              <tr className="text-left">
+                <th className="px-3 py-2">颜色码</th>
+                <th className="px-3 py-2">颜色名</th>
+                <th className="px-3 py-2">更新时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((r) => (
+                <tr key={r.id} className="border-t">
+                  <DataCell label="颜色码" valueClassName="font-mono">
+                    {r.color_hex}
+                  </DataCell>
+                  <DataCell label="颜色名" valueClassName="font-medium">
+                    {r.color_name}
+                  </DataCell>
+                  <DataCell label="更新时间">{r.updated_at ? new Date(r.updated_at).toLocaleString() : "-"}</DataCell>
                 </tr>
-              </thead>
-              <tbody>
-                {items.map((r) => (
-                  <tr key={r.id} className="border-t">
-                    <td className="px-3 py-2 font-mono">{r.color_hex}</td>
-                    <td className="px-3 py-2 font-medium">{r.color_name}</td>
-                    <td className="px-3 py-2">{r.updated_at ? new Date(r.updated_at).toLocaleString() : "-"}</td>
-                  </tr>
-                ))}
-                {items.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="px-3 py-8 text-center text-muted-foreground">
-                      暂无映射。你也可以在打印机页面看到未映射颜色并直接保存。
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+              ))}
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-3 py-8 text-center text-muted-foreground">
+                    暂无映射。你也可以在打印机页面看到未映射颜色并直接保存。
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </DataTable>
         </CardContent>
       </Card>
     </div>

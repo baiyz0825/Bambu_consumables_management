@@ -22,26 +22,8 @@ import {
 } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { NativeSelect } from "../../components/ui/native-select";
 import { OcrScanner } from "../../components/ocr-scanner";
-
-// 计算颜色亮度的工具函数
-function getLuminance(hexColor) {
-  // 移除可能的前缀#
-  const hex = hexColor.replace('#', '');
-  
-  // 将十六进制转换为RGB
-  const r = parseInt(hex.substring(0, 2), 16) / 255;
-  const g = parseInt(hex.substring(2, 4), 16) / 255;
-  const b = parseInt(hex.substring(4, 6), 16) / 255;
-  
-  // 使用标准的相对亮度公式
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-// 根据背景颜色亮度确定文字颜色
-function getTextColor(hexColor) {
-  return getLuminance(hexColor) > 0.5 ? '#000000' : '#FFFFFF';
-}
 
 // OCR 识别颜色 hex → 中文名（用于预填颜色字段）
 const HEX_TO_CN_NAME = {
@@ -178,7 +160,7 @@ export default function Page() {
       const [data, tray, vals] = await Promise.all([
         fetchJson(`/stocks${inc ? "?include_archived=1" : ""}`),
         fetchJson("/trays/summary").catch(() => null),
-        Promise.resolve(null) // 不再需要获取价值数据
+        fetchJson(`/stocks/valuations${inc ? "?include_archived=true" : ""}`).catch(() => null)
       ]);
       setItems(Array.isArray(data) ? data : []);
       setTrayTotal(tray && typeof tray.total_trays === "number" ? tray.total_trays : null);
@@ -353,39 +335,52 @@ export default function Page() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">库存</h1>
           <p className="text-sm text-muted-foreground">按「材质 + 颜色 + 品牌」维护总库存（卷数 × 单卷重量）。</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-col gap-2 lg:max-w-3xl">
           <Input
-            className="h-11 w-full sm:h-9 sm:w-56"
+            className="w-full"
             placeholder="按颜色搜索（未归档）"
             value={colorQuery}
             onChange={(e) => setColorQuery(e.target.value)}
+            aria-label="按颜色搜索"
           />
-          <select
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-            value={sortKey}
-            onChange={(e) => setSortKey(e.target.value)}
-            aria-label="排序字段"
-          >
-            <option value="remaining">按剩余克数</option>
-            <option value="updated">按更新时间</option>
-            <option value="created">按创建时间</option>
-          </select>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
-            aria-label="切换升序/降序"
-          >
-            {sortDir === "desc" ? "降序" : "升序"}
-          </Button>
-          <label className="flex select-none items-center gap-2 text-sm text-muted-foreground">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            <NativeSelect
+              className="col-span-2 sm:w-40"
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value)}
+              aria-label="排序字段"
+            >
+              <option value="remaining">按剩余克数</option>
+              <option value="updated">按更新时间</option>
+              <option value="created">按创建时间</option>
+            </NativeSelect>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
+              aria-label="切换升序/降序"
+            >
+              {sortDir === "desc" ? "降序" : "升序"}
+            </Button>
+            <Button variant="outline" onClick={reload} disabled={loading}>
+              {loading ? "加载中…" : "刷新"}
+            </Button>
+            <Button variant="outline" onClick={() => setDiscardOpen(true)}>
+              丢弃料盘
+            </Button>
+            <Button className="col-span-2 sm:w-auto" onClick={() => setCreateOpen(true)}>
+              新增库存
+            </Button>
+          </div>
+          <label className="flex min-h-11 cursor-pointer select-none items-center gap-3 text-sm text-muted-foreground">
             <input
               type="checkbox"
+              className="h-5 w-5 shrink-0"
               checked={includeArchived}
               onChange={async (e) => {
                 const v = Boolean(e.target.checked);
@@ -395,40 +390,33 @@ export default function Page() {
             />
             显示已删除（归档）
           </label>
-          <Button variant="outline" onClick={reload} disabled={loading}>
-            {loading ? "加载中…" : "刷新"}
-          </Button>
-          <Button variant="outline" onClick={() => setDiscardOpen(true)}>
-            丢弃料盘
-          </Button>
-          <Button onClick={() => setCreateOpen(true)}>新增库存</Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>使用说明</CardTitle>
-            <CardDescription>建议拓竹官方耗材的品牌填“拓竹”，第三方填品牌名。颜色建议用“白色/灰色/黑色”等名称（AMS 十六进制颜色码可在打印机页做映射）。</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm text-muted-foreground">
-              你可以在“库存列表”里查看/调整每个库存项，并通过“新增库存”按钮录入新库存。删除不会丢历史，只是归档隐藏。
-            </div>
-          </CardContent>
-        </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>使用说明</CardTitle>
+          <CardDescription>建议拓竹官方耗材的品牌填“拓竹”，第三方填品牌名。颜色建议用“白色/灰色/黑色”等名称（AMS 十六进制颜色码可在打印机页做映射）。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-sm text-muted-foreground">
+            你可以在“库存列表”里查看/调整每个库存项，并通过“新增库存”按钮录入新库存。删除不会丢历史，只是归档隐藏。
+          </div>
+        </CardContent>
+      </Card>
 
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <Card>
           <CardHeader>
-            <CardTitle>总剩余</CardTitle>
-            <CardDescription>未归档库存项 remaining_grams 合计（估算）。</CardDescription>
+            <CardTitle className="text-base">总剩余</CardTitle>
+            <CardDescription>未归档合计（估算）</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-semibold">{totalRemaining}</div>
             <div className="mt-2 text-sm text-muted-foreground">单位：g</div>
             {includeArchived ? (
               <div className="mt-2 text-xs text-muted-foreground">
-                当前列表包含归档项（总计 {items.length} 条，其中未归档 {activeItems.length} 条）
+                总计 {items.length} 条，未归档 {activeItems.length} 条
               </div>
             ) : (
               <div className="mt-2 text-xs text-muted-foreground">当前未归档 {activeItems.length} 条</div>
@@ -438,47 +426,47 @@ export default function Page() {
 
         <Card>
           <CardHeader>
-            <CardTitle>总料盘</CardTitle>
-            <CardDescription>按入库（带料盘）与丢弃累计。</CardDescription>
+            <CardTitle className="text-base">总料盘</CardTitle>
+            <CardDescription>入库与丢弃累计</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-semibold">{trayTotal === null ? "-" : trayTotal}</div>
             <div className="mt-2 text-sm text-muted-foreground">单位：个</div>
           </CardContent>
         </Card>
-      </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>已消耗卷数</CardTitle>
-            <CardDescription>按消耗克数 / 单卷克数估算。</CardDescription>
+            <CardTitle className="text-base">已消耗卷数</CardTitle>
+            <CardDescription>消耗克数 / 单卷克数</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-semibold">
-              {valuations && valuations.by_stock_id ? 
-                round2(Object.values(valuations.by_stock_id)
-                  .filter(v => v && typeof v.consumed_rolls_est === "number")
-                  .reduce((sum, v) => sum + v.consumed_rolls_est, 0)) 
+              {valuations && valuations.by_stock_id
+                ? round2(
+                    Object.values(valuations.by_stock_id)
+                      .filter((v) => v && typeof v.consumed_rolls_est === "number")
+                      .reduce((sum, v) => sum + v.consumed_rolls_est, 0)
+                  )
                 : "-"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：卷（估算）</div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader>
-            <CardTitle>颜色覆盖率</CardTitle>
-            <CardDescription>已绑定颜色的库存项占比。</CardDescription>
+            <CardTitle className="text-base">颜色覆盖率</CardTitle>
+            <CardDescription>已绑定颜色的占比</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-semibold">
-              {activeItems.length > 0 ? 
-                `${Math.round((activeItems.filter(s => s.color_hex).length / activeItems.length) * 100)}%` 
+              {activeItems.length > 0
+                ? `${Math.round((activeItems.filter((s) => s.color_hex).length / activeItems.length) * 100)}%`
                 : "0%"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">
-              已绑定 {activeItems.filter(s => s.color_hex).length} / {activeItems.length} 项
+              已绑定 {activeItems.filter((s) => s.color_hex).length} / {activeItems.length} 项
             </div>
           </CardContent>
         </Card>
@@ -498,118 +486,61 @@ export default function Page() {
             </div>
           )}
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {/* 活跃库存项 */}
             {sortedActiveItems.map((s) => (
-              <Card 
-                key={s.id} 
-                className="hover:shadow-md transition-shadow"
+              <Card
+                key={s.id}
+                className="overflow-hidden transition-shadow hover:shadow-md"
                 style={{
-                  backgroundColor: s.color_hex ? `${s.color_hex}20` : undefined,
-                  border: s.color_hex ? `1px solid ${s.color_hex}` : undefined
+                  backgroundColor: s.color_hex ? `${s.color_hex}14` : undefined,
+                  borderColor: s.color_hex || undefined
                 }}
               >
-                <CardContent 
-                  className="p-4"
-                  style={{
-                    color: s.color_hex ? getTextColor(s.color_hex) : undefined
-                  }}
-                >
-                  <div className="space-y-3">
-                    {/* 库存项名称 */}
-                    <div>
-                      <Link 
-                        className="font-medium hover:underline text-lg" 
-                        href={`/stocks/${s.id}`}
-                        style={{
-                          color: s.color_hex ? getTextColor(s.color_hex) : undefined
-                        }}
-                      >
-                        {s.material} · {s.color} · {s.brand}
-                      </Link>
-                    </div>
-                    
-                    {/* 剩余量 */}
-                    <div className="flex justify-between items-center text-sm">
-                      <span 
-                        className="text-muted-foreground"
-                        style={{
-                          color: s.color_hex ? `${getTextColor(s.color_hex)}99` : undefined
-                        }}
-                      >
-                        剩余
-                      </span>
-                      <span 
-                        className="font-medium text-lg"
-                        style={{
-                          color: s.color_hex ? getTextColor(s.color_hex) : undefined
-                        }}
-                      >
-                        {s.remaining_grams}g
-                      </span>
-                    </div>
-                    
-                    {/* 颜色信息 */}
-                    <div className="flex justify-between items-center">
-                      <span 
-                        className="text-sm text-muted-foreground"
-                        style={{
-                          color: s.color_hex ? `${getTextColor(s.color_hex)}99` : undefined
-                        }}
-                      >
-                        颜色
-                      </span>
-                      {s.color_hex ? (
-                        <ColorBlock colorHex={s.color_hex} colorName={s.color} />
-                      ) : (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span 
-                            className="text-xs"
-                            style={{
-                              color: s.color_hex ? `${getTextColor(s.color_hex)}99` : undefined
-                            }}
-                          >
-                            未绑定
-                          </span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setBindColorTarget(s);
-                              setBindColorOpen(true);
-                            }}
-                            style={{
-                              color: s.color_hex ? getTextColor(s.color_hex) : undefined,
-                              borderColor: s.color_hex ? getTextColor(s.color_hex) : undefined
-                            }}
-                          >
-                            绑定颜色
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* 操作按钮 */}
-                    <div className="pt-2">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="w-full"
-                        disabled={Boolean(s?.is_archived)}
-                        onClick={() => {
-                          setDeleteTarget(s);
-                          setDeleteRefInfo(null);
-                          setDeleteOpen(true);
-                        }}
-                        style={{
-                          backgroundColor: s.color_hex ? `${getTextColor(s.color_hex)}20` : undefined,
-                          borderColor: s.color_hex ? getTextColor(s.color_hex) : undefined,
-                          color: s.color_hex ? getTextColor(s.color_hex) : undefined
-                        }}
-                      >
-                        删除
-                      </Button>
-                    </div>
+                <CardContent className="space-y-3 p-4">
+                  <Link className="block break-words text-lg font-medium hover:underline" href={`/stocks/${s.id}`}>
+                    {s.material} · {s.color} · {s.brand}
+                  </Link>
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">剩余</span>
+                    <span className="text-lg font-medium">{s.remaining_grams}g</span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm text-muted-foreground">颜色</span>
+                    {s.color_hex ? (
+                      <ColorBlock colorHex={s.color_hex} colorName={s.color} />
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-muted-foreground">未绑定</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setBindColorTarget(s);
+                            setBindColorOpen(true);
+                          }}
+                        >
+                          绑定颜色
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <Button asChild variant="outline" size="sm">
+                      <Link href={`/stocks/${s.id}`}>详情</Link>
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={Boolean(s?.is_archived)}
+                      onClick={() => {
+                        setDeleteTarget(s);
+                        setDeleteRefInfo(null);
+                        setDeleteOpen(true);
+                      }}
+                    >
+                      删除
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -617,106 +548,38 @@ export default function Page() {
             
             {/* 归档库存项 */}
             {includeArchived && sortedArchivedItems.map((s) => (
-              <Card 
-                key={s.id} 
-                className="hover:shadow-md transition-shadow opacity-75"
+              <Card
+                key={s.id}
+                className="overflow-hidden opacity-80 transition-shadow hover:shadow-md"
                 style={{
-                  backgroundColor: s.color_hex ? `${s.color_hex}20` : undefined,
-                  border: s.color_hex ? `1px solid ${s.color_hex}` : undefined
+                  backgroundColor: s.color_hex ? `${s.color_hex}14` : undefined,
+                  borderColor: s.color_hex || undefined
                 }}
               >
-                <CardContent 
-                  className="p-4"
-                  style={{
-                    color: s.color_hex ? getTextColor(s.color_hex) : undefined
-                  }}
-                >
-                  <div className="space-y-3">
-                    {/* 库存项名称 */}
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <Link 
-                        className="min-w-0 break-words font-medium text-lg hover:underline" 
-                        href={`/stocks/${s.id}`}
-                        style={{
-                          color: s.color_hex ? getTextColor(s.color_hex) : undefined
-                        }}
-                      >
-                        {s.material} · {s.color} · {s.brand}
-                      </Link>
-                      <Badge 
-                        variant="outline" 
-                        className="text-xs"
-                        style={{
-                          color: s.color_hex ? getTextColor(s.color_hex) : undefined,
-                          borderColor: s.color_hex ? getTextColor(s.color_hex) : undefined
-                        }}
-                      >
-                        已归档
-                      </Badge>
-                    </div>
-                    
-                    {/* 剩余量 */}
-                    <div className="flex justify-between items-center text-sm">
-                      <span 
-                        className="text-muted-foreground"
-                        style={{
-                          color: s.color_hex ? `${getTextColor(s.color_hex)}99` : undefined
-                        }}
-                      >
-                        剩余
-                      </span>
-                      <span 
-                        className="font-medium text-lg"
-                        style={{
-                          color: s.color_hex ? getTextColor(s.color_hex) : undefined
-                        }}
-                      >
-                        {s.remaining_grams}g
-                      </span>
-                    </div>
-                    
-                    {/* 颜色信息 */}
-                    <div className="flex justify-between items-center">
-                      <span 
-                        className="text-sm text-muted-foreground"
-                        style={{
-                          color: s.color_hex ? `${getTextColor(s.color_hex)}99` : undefined
-                        }}
-                      >
-                        颜色
-                      </span>
-                      {s.color_hex ? (
-                        <ColorBlock colorHex={s.color_hex} colorName={s.color} />
-                      ) : (
-                        <span 
-                          className="text-xs"
-                          style={{
-                            color: s.color_hex ? `${getTextColor(s.color_hex)}99` : undefined
-                          }}
-                        >
-                          未绑定颜色
-                        </span>
-                      )}
-                    </div>
-                    
-                    {/* 操作按钮 */}
-                    <div className="pt-2">
-                      <Button 
-                        variant="default" 
-                        size="sm" 
-                        className="w-full"
-                        onClick={() => restoreStock(s)}
-                        disabled={restoring}
-                        style={{
-                          backgroundColor: s.color_hex ? `${getTextColor(s.color_hex)}20` : undefined,
-                          borderColor: s.color_hex ? getTextColor(s.color_hex) : undefined,
-                          color: s.color_hex ? getTextColor(s.color_hex) : undefined
-                        }}
-                      >
-                        {restoring ? "恢复中..." : "恢复"}
-                      </Button>
-                    </div>
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Link className="min-w-0 break-words text-lg font-medium hover:underline" href={`/stocks/${s.id}`}>
+                      {s.material} · {s.color} · {s.brand}
+                    </Link>
+                    <Badge variant="outline" className="text-xs">
+                      已归档
+                    </Badge>
                   </div>
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">剩余</span>
+                    <span className="text-lg font-medium">{s.remaining_grams}g</span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm text-muted-foreground">颜色</span>
+                    {s.color_hex ? (
+                      <ColorBlock colorHex={s.color_hex} colorName={s.color} />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">未绑定颜色</span>
+                    )}
+                  </div>
+                  <Button className="w-full" size="sm" onClick={() => restoreStock(s)} disabled={restoring}>
+                    {restoring ? "恢复中…" : "恢复"}
+                  </Button>
                 </CardContent>
               </Card>
             ))}
@@ -868,8 +731,8 @@ export default function Page() {
               </div>
               <div className="grid gap-2">
                 <Label>料盘</Label>
-                <label className="flex select-none items-center gap-2 text-sm text-muted-foreground">
-                  <input type="checkbox" {...form.register("has_tray")} />
+                <label className="flex min-h-11 cursor-pointer select-none items-center gap-3 text-sm text-muted-foreground">
+                  <input type="checkbox" className="h-5 w-5 shrink-0" {...form.register("has_tray")} />
                   本次入库带料盘（料盘数 + 卷数）
                 </label>
               </div>

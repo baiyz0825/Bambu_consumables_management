@@ -5,7 +5,7 @@ import { cva } from "class-variance-authority";
 import { cn } from "../../lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
@@ -17,11 +17,11 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline"
       },
       size: {
-        // 移动端优先：默认 40px 触控高度，桌面（sm+）回到紧凑的 36px
-        default: "h-10 px-4 py-2 sm:h-9",
-        sm: "h-9 rounded-md px-3 text-xs sm:h-8",
-        lg: "h-11 rounded-md px-8 sm:h-10",
-        icon: "h-10 w-10 sm:h-9 sm:w-9"
+        // 触控优先：手机 / iPad 竖屏 44px，lg（iPad 横屏与桌面）再收紧
+        default: "h-11 px-4 py-2 lg:h-9",
+        sm: "h-11 rounded-md px-3 lg:h-8 lg:text-xs",
+        lg: "h-11 rounded-md px-8",
+        icon: "h-11 w-11 lg:h-9 lg:w-9"
       }
     },
     defaultVariants: {
