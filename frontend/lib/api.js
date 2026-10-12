@@ -57,7 +57,9 @@ export async function fetchJson(path, init = {}) {
       const msg =
         typeof detail === "string"
           ? detail
-          : `${res.status} ${res.statusText || "Request failed"}`;
+          : detail && typeof detail === "object" && typeof detail.message === "string"
+            ? detail.message
+            : `${res.status} ${res.statusText || "Request failed"}`;
       throw new ApiError(msg, { status: res.status, detail, raw: body });
     }
 

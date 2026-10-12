@@ -79,6 +79,16 @@ async def init_db() -> None:
         try:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+
+                def _ensure_link(sync_conn) -> None:
+                    rows = sync_conn.execute(text("PRAGMA table_info(printers)")).fetchall()
+                    names = {str(r[1]) for r in rows}
+                    if names and "link_used" not in names:
+                        sync_conn.execute(text("ALTER TABLE printers ADD COLUMN link_used TEXT NOT NULL DEFAULT 'unknown'"))
+
+                from sqlalchemy import text
+
+                await conn.run_sync(_ensure_link)
             logger.info("collector schema ensured (attempt=%d)", attempt)
             return
         except Exception:

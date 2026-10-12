@@ -43,6 +43,7 @@ async def sse_printers(db: AsyncSession = Depends(get_db)) -> StreamingResponse:
                         "alias": p.alias,
                         "model": p.model,
                         "status": p.status,
+                        "link_used": p.link_used,
                         "last_seen": p.last_seen.isoformat() if p.last_seen else None,
                     }
                     for p in printers

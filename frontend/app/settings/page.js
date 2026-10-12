@@ -4,6 +4,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 
 const ENTRIES = [
   {
+    href: "/settings/cloud",
+    title: "拓竹云账号",
+    description: "登录后，人离开局域网时仍能收到同一台打印机的状态。序列号相同不会再出现第二条记录。",
+    action: "登录或查看已绑定的打印机"
+  },
+  {
     href: "/settings/color-mappings",
     title: "颜色映射",
     description: "把 AMS 颜色码（如 FFFFFF / FFFFFFFF）映射成“白色 / 灰色”，用于库存匹配与自动扣减。",
@@ -22,7 +28,7 @@ export default function Page() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">设置</h1>
-        <p className="text-sm text-muted-foreground">颜色映射与材料调试入口。</p>
+        <p className="text-sm text-muted-foreground">拓竹云账号、颜色映射与材料调试。</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

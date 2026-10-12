@@ -20,6 +20,7 @@ class Printer(Base):
     model: Mapped[str | None] = mapped_column(Text, nullable=True)
     lan_access_code_enc: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
+    link_used: Mapped[str] = mapped_column(Text, nullable=False, default="unknown")
     last_seen: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     # 与 backend 模型保持一致（SQLite 模式下两端都可能建表，schema 必须对齐）
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=datetime.utcnow)

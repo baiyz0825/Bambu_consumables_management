@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import color_mappings, jobs, mappings, material_ledger, printers, realtime, reports, spools, stocks, trays
+from app.api.routers import cloud, color_mappings, jobs, mappings, material_ledger, printers, realtime, reports, spools, stocks, trays
 from app.db.session import async_session_factory, init_db
 from app.schemas.common import Health
 from app.services.event_processor import EventProcessor
@@ -38,6 +38,7 @@ app.add_middleware(
 )
 
 app.include_router(printers.router)
+app.include_router(cloud.router)
 app.include_router(spools.router)
 app.include_router(stocks.router)
 app.include_router(material_ledger.router)

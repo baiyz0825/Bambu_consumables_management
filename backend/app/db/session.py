@@ -88,7 +88,7 @@ async def init_db() -> None:
 
     from app.db import models  # noqa: F401  触发模型注册到 Base.metadata
     from app.db.base import Base
-    from app.db.sqlite_migrate import ensure_tray_mapping_schema
+    from app.db.sqlite_migrate import ensure_printer_link_used, ensure_tray_mapping_schema
 
     for attempt in range(1, INIT_DB_MAX_ATTEMPTS + 1):
         try:
@@ -100,6 +100,7 @@ async def init_db() -> None:
             async with engine.connect() as mconn:
                 await mconn.execution_options(isolation_level="AUTOCOMMIT")
                 await mconn.run_sync(ensure_tray_mapping_schema)
+                await mconn.run_sync(ensure_printer_link_used)
             logger.info("database schema ensured (attempt=%d)", attempt)
             return
         except Exception:

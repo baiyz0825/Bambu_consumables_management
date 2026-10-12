@@ -23,6 +23,8 @@ class Printer(Base):
     lan_access_code_enc: Mapped[str] = mapped_column(Text, nullable=False)
 
     status: Mapped[str] = mapped_column(Text, nullable=False, default="unknown")
+    # 当前实际使用的通路：lan / cloud / unknown。同一序列号只有这一行。
+    link_used: Mapped[str] = mapped_column(Text, nullable=False, default="unknown")
     last_seen: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=datetime.utcnow)

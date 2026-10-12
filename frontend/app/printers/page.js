@@ -34,6 +34,12 @@ function fmtTime(iso) {
   return d.toLocaleString();
 }
 
+function linkLabel(link) {
+  if (link === "lan") return "当前局域网";
+  if (link === "cloud") return "当前云端";
+  return "通路未连通";
+}
+
 function statusVariant(status) {
   const s = String(status || "").toLowerCase();
   if (s === "online") return "default";
@@ -265,17 +271,28 @@ export default function Page() {
   });
 
   async function onSubmit(values) {
-    await fetchJson("/printers", {
-      method: "POST",
-      body: JSON.stringify({
-        ip: values.ip,
-        serial: values.serial,
-        lan_access_code: values.lan_access_code,
-        alias: values.alias ? values.alias : null,
-        model: values.model ? values.model : null
-      })
-    });
-    toast.success("打印机已添加");
+    const payload = {
+      ip: values.ip,
+      serial: values.serial,
+      lan_access_code: values.lan_access_code,
+      alias: values.alias ? values.alias : null,
+      model: values.model ? values.model : null
+    };
+    try {
+      await fetchJson("/printers", { method: "POST", body: JSON.stringify(payload) });
+      toast.success("打印机已添加");
+    } catch (e) {
+      const printerId = e?.detail?.printer_id;
+      if (e?.status === 409 && printerId) {
+        const patch = { ip: values.ip, lan_access_code: values.lan_access_code };
+        if (values.alias) patch.alias = values.alias;
+        if (values.model) patch.model = values.model;
+        await fetchJson(`/printers/${printerId}`, { method: "PATCH", body: JSON.stringify(patch) });
+        toast.success("这台打印机已在列表中，局域网地址已写到同一条记录");
+      } else {
+        throw e;
+      }
+    }
     form.reset({ ip: "", serial: "", lan_access_code: "", alias: "", model: "" });
     await reload();
   }
@@ -307,7 +324,7 @@ export default function Page() {
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">打印机</h1>
           <p className="text-sm text-muted-foreground">
-            添加/查看打印机。耗材不再按“具体卷”绑定托盘，而是按「材质+颜色+品牌」的库存项扣减；第三方品牌读不到时会在作业里提示归因。
+            一台打印机只保留一条记录。局域网能连上时走直连，否则走拓竹云上的同一台机器。
           </p>
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap lg:justify-end">
@@ -441,9 +458,10 @@ export default function Page() {
                     <CardTitle className="flex items-center gap-2">
                       <span>{p.alias || p.serial}</span>
                       <Badge variant={statusVariant(p.status)}>{p.status}</Badge>
+                      <Badge variant="outline">{linkLabel(p.link_used)}</Badge>
                     </CardTitle>
                     <CardDescription className="break-all">
-                      {p.ip} · {p.serial} · 最后连接：{p.last_seen ? fmtTime(p.last_seen) : "-"}
+                      {p.ip || "未填局域网地址"} · {p.serial} · 最后连接：{p.last_seen ? fmtTime(p.last_seen) : "-"}
                     </CardDescription>
                   </div>
                   <div className="min-w-0 break-words text-sm">

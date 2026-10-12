@@ -96,3 +96,12 @@ def ensure_tray_mapping_schema(sync_conn: Connection) -> None:
     )
     sync_conn.execute(text(f"DROP TABLE {legacy_table}"))
     logger.info("tray_mappings migrated to stock_id schema")
+
+
+def ensure_printer_link_used(sync_conn: Connection) -> None:
+    """老库补上 printers.link_used。新库由模型 create_all 建出该列。"""
+    cols = _table_columns(sync_conn, "printers")
+    if not cols or "link_used" in cols:
+        return
+    logger.info("adding printers.link_used")
+    sync_conn.execute(text("ALTER TABLE printers ADD COLUMN link_used TEXT NOT NULL DEFAULT 'unknown'"))

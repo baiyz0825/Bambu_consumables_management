@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "耗材系统：一台打印机两条通路",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "lan-first",
+        "label": "局域网优先",
+        "focus": ["printer", "collector", "database", "api", "ui"],
+        "note": "同一序列号只有一条打印机记录。采集端能直连 8883 时走局域网。"
+      },
+      {
+        "id": "cloud-fallback",
+        "label": "云端备用",
+        "focus": ["printer", "bambu-cloud", "collector", "database"],
+        "note": "直连失败时，采集端改订拓竹云上同一序列号的状态。"
+      }
+    ]
+  },
+  "components": [
+    { "id": "ui", "type": "frontend", "label": "前端", "sublabel": "Next.js", "pos": [40, 80], "size": [140, 64] },
+    { "id": "api", "type": "backend", "label": "后端", "sublabel": "FastAPI", "pos": [280, 80], "size": [150, 64] },
+    { "id": "database", "type": "database", "label": "数据库", "sublabel": "SQLite 或 PostgreSQL", "pos": [530, 80], "size": [190, 64] },
+    { "id": "printer", "type": "external", "label": "拓竹打印机", "sublabel": "按序列号唯一", "pos": [40, 280], "size": [170, 64] },
+    { "id": "collector", "type": "backend", "label": "采集器", "sublabel": "每台一个连接", "pos": [310, 280], "size": [170, 64] },
+    { "id": "bambu-cloud", "type": "cloud", "label": "拓竹云 MQTT", "sublabel": "同一序列号", "pos": [560, 280], "size": [160, 64] }
+  ],
+  "connections": [
+    { "id": "ui-api", "from": "ui", "to": "api", "label": "REST / SSE", "variant": "emphasis" },
+    { "id": "api-db", "from": "api", "to": "database", "label": "结算与查询" },
+    { "id": "collector-db", "from": "collector", "to": "database", "label": "写入事件" },
+    { "id": "printer-collector", "from": "printer", "to": "collector", "label": "局域网优先", "variant": "emphasis" },
+    { "id": "cloud-collector", "from": "bambu-cloud", "to": "collector", "label": "直连失败时", "variant": "dashed", "labelDy": 22 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "一台记录", "items": ["序列号相同就合并", "局域网通就直连"] },
+    { "dot": "emerald", "title": "读到的状态", "items": ["进度、任务、AMS 槽位", "用来扣本系统库存"] },
+    { "dot": "rose", "title": "不在这条链路里", "items": ["远程开打印仍用 Handy", "摄像头和模型文件不走这里"] }
+  ]
+}

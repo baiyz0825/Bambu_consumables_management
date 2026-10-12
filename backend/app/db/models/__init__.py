@@ -5,6 +5,7 @@ from .material_ledger import MaterialLedger  # noqa: F401
 from .material_stock import MaterialStock  # noqa: F401
 from .normalized_event import NormalizedEvent  # noqa: F401
 from .print_job import PrintJob  # noqa: F401
+from .bambu_cloud_session import BambuCloudSession  # noqa: F401
 from .printer import Printer  # noqa: F401
 from .raw_event import RawEvent  # noqa: F401
 from .spool import Spool  # noqa: F401

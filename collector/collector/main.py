@@ -34,6 +34,7 @@ if settings.database_url.startswith("sqlite"):
 else:
     from sqlalchemy.dialects.postgresql import insert
 
+from collector.cloud_mqtt import CloudMqtt, load_cloud_mqtt, tcp_open
 from collector.core.crypto import decrypt_str
 from collector.gcode_estimator import GcodeEstimateManager
 from collector.db.models.normalized_event import NormalizedEvent
@@ -70,6 +71,8 @@ class IngestItem:
 
 
 class PrinterWatcher:
+    """一台打印机一个连接。局域网通就走局域网，否则走同一序列号的云端通路。"""
+
     def __init__(
         self,
         *,
@@ -77,30 +80,83 @@ class PrinterWatcher:
         ingest_q: "asyncio.Queue[IngestItem]",
         printer: Printer,
         lan_code_plain: str,
+        cloud: CloudMqtt | None,
     ) -> None:
         self.loop = loop
         self.ingest_q = ingest_q
         self.printer = printer
         self.lan_code_plain = lan_code_plain
+        self.cloud = cloud
         self.topic_report = f"device/{printer.serial}/report"
+        self.topic_request = f"device/{printer.serial}/request"
+        self._client: mqtt.Client | None = None
+        self._stop = threading.Event()
+        self._lan_backoff_until = 0.0
+        self._mode = "lan"
 
-        self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv311)
-        self._client.username_pw_set("bblp", self.lan_code_plain)
+    def stop(self) -> None:
+        self._stop.set()
+        client = self._client
+        if client is not None:
+            try:
+                client.disconnect()
+            except Exception:
+                logger.debug("mqtt disconnect failed serial=%s", self.printer.serial)
 
-        # TLS（拓竹 LAN MQTT 通常使用 8883）
+    def _pick_mode(self) -> str:
+        ip = (self.printer.ip or "").strip()
+        lan_ready = bool(ip and self.lan_code_plain) and time.time() >= self._lan_backoff_until and tcp_open(ip, 8883)
+        if lan_ready:
+            return "lan"
+        if self.cloud is not None:
+            return "cloud"
+        return "lan"
+
+    def _mark_link(self, link: str) -> None:
+        printer_id = self.printer.id
+
+        async def _go() -> None:
+            try:
+                async with async_session_factory() as session:
+                    await session.execute(update(Printer).where(Printer.id == printer_id).values(link_used=link))
+                    await session.commit()
+            except Exception:
+                logger.debug("failed to store link_used serial=%s", self.printer.serial)
+
+        asyncio.run_coroutine_threadsafe(_go(), self.loop)
+
+    def _build_client(self, mode: str) -> tuple[mqtt.Client, str]:
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv311)
+        client.on_connect = self._on_connect
+        client.on_message = self._on_message
+        client.on_disconnect = self._on_disconnect
+        if mode == "cloud" and self.cloud is not None:
+            client.username_pw_set(self.cloud.username, self.cloud.token)
+            client.tls_set(tls_version=ssl.PROTOCOL_TLS)
+            return client, self.cloud.host
+        client.username_pw_set("bblp", self.lan_code_plain)
         if settings.allow_insecure_mqtt_tls:
-            self._client.tls_set(tls_version=ssl.PROTOCOL_TLS, cert_reqs=ssl.CERT_NONE)
-            self._client.tls_insecure_set(True)
+            client.tls_set(tls_version=ssl.PROTOCOL_TLS, cert_reqs=ssl.CERT_NONE)
+            client.tls_insecure_set(True)
         else:
-            self._client.tls_set(tls_version=ssl.PROTOCOL_TLS)
-
-        self._client.on_connect = self._on_connect
-        self._client.on_message = self._on_message
-        self._client.on_disconnect = self._on_disconnect
+            client.tls_set(tls_version=ssl.PROTOCOL_TLS)
+        return client, (self.printer.ip or "").strip()
 
     def _on_connect(self, client: mqtt.Client, userdata: Any, flags: Any, reason_code: Any, properties: Any = None) -> None:
-        logger.info("mqtt connected serial=%s reason=%s", self.printer.serial, reason_code)
+        ok = getattr(reason_code, "is_failure", None)
+        failed = bool(ok) if ok is not None else str(reason_code) not in {"0", "Success"}
+        logger.info("mqtt connected serial=%s mode=%s reason=%s", self.printer.serial, self._mode, reason_code)
+        if failed:
+            if self._mode == "lan":
+                self._lan_backoff_until = time.time() + 60
+            client.disconnect()
+            return
         client.subscribe(self.topic_report)
+        client.publish(
+            self.topic_request,
+            orjson.dumps({"pushing": {"sequence_id": "0", "command": "pushall", "version": 1, "push_target": 1}}),
+        )
+        self._mark_link("lan" if self._mode == "lan" else "cloud")
 
     def _on_disconnect(
         self,
@@ -136,17 +192,25 @@ class PrinterWatcher:
         return t
 
     def _run(self) -> None:
-        # 断线重连：paho 内部有重连逻辑，但这里用 loop_forever 简化
-        while True:
+        while not self._stop.is_set():
+            self._mode = self._pick_mode()
+            if self._mode == "lan" and not (self.printer.ip or "").strip():
+                self._mark_link("unknown")
+                if self._stop.wait(5):
+                    return
+                continue
             try:
-                logger.debug("mqtt connecting serial=%s ip=%s port=8883", self.printer.serial, self.printer.ip)
-                self._client.connect(self.printer.ip, 8883, keepalive=60)
-                self._client.loop_forever(retry_first_connection=True)
+                client, host = self._build_client(self._mode)
+                self._client = client
+                logger.info("mqtt connecting serial=%s mode=%s host=%s", self.printer.serial, self._mode, host)
+                client.connect(host, 8883, keepalive=60)
+                client.loop_forever(retry_first_connection=False)
             except Exception:
-                logger.exception("mqtt loop crashed serial=%s, retrying in 5s", self.printer.serial)
-                import time
-
-                time.sleep(5)
+                logger.exception("mqtt loop crashed serial=%s mode=%s, retrying in 5s", self.printer.serial, self._mode)
+                if self._mode == "lan":
+                    self._lan_backoff_until = time.time() + 15
+            if self._stop.wait(5):
+                return
 
 
 def _normalize_color_hex(v: object) -> str | None:
@@ -709,31 +773,48 @@ async def main() -> None:
         logger.warning("db not ready yet; will retry loading printers")
 
     loop = asyncio.get_running_loop()
-    threads: list[threading.Thread] = []
+    watchers: dict[uuid.UUID, PrinterWatcher] = {}
+    last_fp = ""
 
-    async def _spawn_watchers() -> None:
-        nonlocal threads
+    async def _supervise() -> None:
+        nonlocal last_fp, watchers
         while True:
             try:
+                cloud = await load_cloud_mqtt()
                 async with async_session_factory() as session:
                     printers_local = (await session.execute(select(Printer))).scalars().all()
             except Exception:
+                logger.warning("db not ready yet; will retry loading printers")
                 await asyncio.sleep(5)
                 continue
 
-            # 简化：每轮都重建 watchers（MVP），后续可做增量与去重
-            if printers_local:
-                threads = []
+            token_mark = cloud.fingerprint if cloud else ""
+            fp = "|".join(
+                f"{p.id}:{p.serial}:{p.ip}:{p.lan_access_code_enc}:{token_mark}" for p in printers_local
+            )
+            if fp != last_fp:
+                for watcher in watchers.values():
+                    watcher.stop()
+                watchers = {}
                 for p in printers_local:
-                    lan_code_plain = decrypt_str(settings.app_secret_key, p.lan_access_code_enc)
-                    w = PrinterWatcher(loop=loop, ingest_q=ingest_q, printer=p, lan_code_plain=lan_code_plain)
-                    threads.append(w.start_in_thread())
-                logger.info("watchers started: %d", len(printers_local))
-                return
+                    try:
+                        lan_code_plain = decrypt_str(settings.app_secret_key, p.lan_access_code_enc) if p.lan_access_code_enc else ""
+                    except ValueError:
+                        lan_code_plain = ""
+                    watcher = PrinterWatcher(
+                        loop=loop,
+                        ingest_q=ingest_q,
+                        printer=p,
+                        lan_code_plain=lan_code_plain,
+                        cloud=cloud,
+                    )
+                    watcher.start_in_thread()
+                    watchers[p.id] = watcher
+                last_fp = fp
+                logger.info("watchers running: %d cloud=%s", len(watchers), bool(cloud))
+            await asyncio.sleep(15)
 
-            await asyncio.sleep(10)
-
-    await asyncio.gather(_spawn_watchers(), ingest_loop(ingest_q))
+    await asyncio.gather(_supervise(), ingest_loop(ingest_q))
 
 
 if __name__ == "__main__":

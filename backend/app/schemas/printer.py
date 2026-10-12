@@ -31,6 +31,7 @@ class PrinterOut(APIModel):
     alias: str | None
     model: str | None
     status: str
+    link_used: str = "unknown"
     last_seen: datetime | None
 
 

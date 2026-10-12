@@ -1,455 +1,48 @@
-# 拓竹耗材管理系统 (Bambu Consumables Management)
+# 拓竹耗材管理系统
 
-一个专为拓竹（Bambu Lab）打印机设计的局域网耗材管理系统。通过 **LAN MQTT** 直连打印机，实时监控打印状态与 AMS 托盘信息，自动结算耗材消耗并生成成本统计。支持 **SQLite 单机模式**（零依赖部署）和 **PostgreSQL** 双数据库后端，提供 **PWA 可安装**、**手机 / iPad / 桌面自适应**、**暗色/亮色主题**、**拍照 OCR 识别耗材**、**局域网扫描添加打印机**。
+局域网里管理拓竹打印机的耗材：读取打印状态和 AMS 槽位，按「材质 + 颜色 + 品牌」扣库存，并统计成本。
 
-下面的截图是界面示例（演示数据），用来对照每一页的布局、入口和按钮。手机宽度使用底部标签，iPad 竖屏同样走底部标签，iPad 横屏和桌面走顶部导航。
+一台打印机只有一条记录。能直连时走局域网；直连不上且已登录拓竹账号时，改读云端上的同一台。远程开打印仍用 Bambu Handy。单机用 SQLite，也可以换 PostgreSQL。手机、iPad 和桌面都能用，可安装到主屏。
 
-## 界面一览
+## 文档
 
-| 页面 | 路径 | 能做什么 |
-|---|---|---|
-| 仪表盘 | `/` | 在线数、正在打印、今日与近 7 天消耗，并跳到打印机 / 库存 / 任务 |
-| 打印机 | `/printers` | 扫描或手填添加打印机，查看 AMS 四槽，映射颜色，绑定库存 |
-| 库存 | `/stocks` | 按材质 + 颜色 + 品牌维护库存，搜索排序，拍照或手动新增，归档与恢复 |
-| 库存详情 | `/stocks/[id]` | 剩余与价值、流水，盘点调整、手工扣料、编辑入库 |
-| 任务历史 | `/jobs` | 按打印机、状态、关键字筛选任务 |
-| 任务详情 | `/jobs/[id]` | 扣料记录、待归因结算、手工补录与撤销 |
-| 报告 | `/reports` | 近 30 天按日、以及按月的克数和成本 |
-| 设置 | `/settings` | 进入颜色映射和材料调试 |
-| 颜色映射 | `/settings/color-mappings` | 把 AMS 颜色码写成「白色 / 灰色」等库存颜色名 |
-| 材料调试 | `/settings/material-debug` | 用颜色码或材质核对能匹配到哪些库存 |
-| 离线 | `/offline` | 网络不可用时的兜底页，已缓存页面仍可打开 |
+| 文档 | 内容 |
+|---|---|
+| [功能说明](docs/功能说明.md) | 打印机、库存、任务、消耗、界面 |
+| [架构](docs/架构.md) | 两条通路、登录合并、扣库存。图：[system.html](docs/diagrams/system.html) |
+| [界面](docs/界面.md) | 各页面做什么，以及桌面 / 手机 / iPad 截图 |
+| [快速开始](docs/快速开始.md) | 本机启动、Docker、配置、接入打印机 |
+| [GHCR 快速部署指南](docs/GHCR快速部署指南.md) | 预构建镜像 |
+| [备份与恢复](docs/备份与恢复.md) | 数据备份 |
+| [升级与回滚](docs/升级与回滚.md) | 版本切换 |
+| [更新日志](docs/CHANGELOG.md) | 变更记录 |
 
-### 桌面
+接口说明在后端起来之后打开 `http://localhost:8000/docs`。
 
-仪表盘：在线、正在打印和消耗趋势。
+## 页面
 
-<img src="docs/images/dashboard.png" alt="仪表盘" width="960">
+| 页面 | 路径 |
+|---|---|
+| 仪表盘 | `/` |
+| 打印机 | `/printers` |
+| 库存 | `/stocks` |
+| 任务 | `/jobs` |
+| 报告 | `/reports` |
+| 设置 | `/settings` |
 
-同一页的深色主题。右上角图标在浅色、深色、跟随系统之间切换。
+截图和每个页面的操作见 [界面](docs/界面.md)。
 
-<img src="docs/images/dashboard-dark.png" alt="仪表盘深色" width="960">
-
-打印机：添加表单、实时状态，以及每个托盘的绑定和颜色映射。
-
-<img src="docs/images/printers.png" alt="打印机" width="960">
-
-扫描局域网：mDNS 扫到设备后点「选择」，只需再填 LAN 访问码。扫不到时改用网段扫描。
-
-<img src="docs/images/printer-scan.png" alt="扫描局域网" width="960">
-
-库存：汇总数字和库存卡片。未绑定颜色的项可以直接「绑定颜色」。
-
-<img src="docs/images/stocks.png" alt="库存" width="960">
-
-新增库存弹层带「拍照识别」，识别结果填进表单后仍可手改。
-
-<img src="docs/images/stock-create.png" alt="新增库存" width="960">
-
-库存详情：剩余、购入与消耗价值，以及可编辑、可冲销的流水。
-
-<img src="docs/images/stock-detail.png" alt="库存详情" width="960">
-
-任务历史与任务详情。详情里可以补录扣料，手工记录可以撤销。
-
-<img src="docs/images/jobs.png" alt="任务历史" width="960">
-
-<img src="docs/images/job-detail.png" alt="任务详情" width="960">
-
-报告、设置、颜色映射、材料调试、离线页。
-
-<img src="docs/images/reports.png" alt="报告" width="960">
-
-<img src="docs/images/settings.png" alt="设置" width="720">
-
-<img src="docs/images/color-mappings.png" alt="颜色映射" width="960">
-
-<img src="docs/images/material-debug.png" alt="材料调试" width="960">
-
-<img src="docs/images/offline.png" alt="离线页" width="720">
-
-### 手机与 iPad
-
-手机底部是六个标签：仪表盘、打印机、库存、任务、报告、设置。宽表在窄屏改成纵向卡片，绑定、删除、查看详情这些按钮留在屏幕里。
-
-<img src="docs/images/dashboard-mobile.png" alt="手机仪表盘" width="280">
-<img src="docs/images/printers-mobile.png" alt="手机打印机" width="280">
-<img src="docs/images/stocks-mobile.png" alt="手机库存" width="280">
-
-<img src="docs/images/jobs-mobile.png" alt="手机任务" width="280">
-<img src="docs/images/reports-mobile.png" alt="手机报告" width="280">
-<img src="docs/images/settings-mobile.png" alt="手机设置" width="280">
-
-iPad 竖屏仍使用底部标签，统计卡变成两列。
-
-<img src="docs/images/stocks-ipad.png" alt="iPad 库存" width="480">
-
----
-
-## 核心功能
-
-### 🖨️ 打印机管理与实时监控
-
-- **局域网自动扫描添加**：一键 mDNS 扫描局域网内的拓竹打印机，自动发现 IP/序列号/型号/固件版本，选中后只需手输 LAN 访问码即可完成添加
-- **打印机接入管理**：支持添加/删除/编辑打印机，IP/序列号/访问码加密存储
-- **实时状态监控**：MQTT 直连打印机，实时显示在线状态、打印进度、当前任务和托盘
-- **AMS 托盘信息**：展示当前活动托盘及所有托盘的颜色、材质、剩余量、RFID 标签
-- **托盘手动绑定库存**：每个 AMS 托盘可一键绑定耗材库中的库存项（支持搜索/更改/解绑）
-- **绑定优先结算**：结算解析托盘库存时**优先采用手动绑定**（`binding`），无绑定才回落颜色自动匹配（`auto`）；多品牌冲突、颜色未映射等场景绑定一次即可长期生效
-- **绑定时效与安全**：绑定以作业开始时刻判定（`bound_at <= job.started_at`），打印中途改绑定不影响已开始作业；绑定目标被归档/删除时自动回落自动匹配；库存归档或合并会级联解绑对应托盘
-- **多机管理**：支持多台打印机同时接入，独立线程监控互不干扰
-
-### 拍照 OCR 识别耗材
-
-- **拍照自动识别**：拍摄耗材标签照片，自动识别材质（PLA/PETG/TPU/ABS...）、单卷重量、颜色名、品牌
-- **图像取色**：Canvas 提取图片主色调 RGB，自动填充 `color_hex`，比 OCR 文本颜色名更精确
-- **智能解析**：正则从 OCR 文本提取结构化字段，覆盖拓竹 + 主流品牌（Polymaker/eSun/Sunlu...）
-- **预填表单**：识别结果自动填入新增库存表单，识别不准的字段可手动修改
-- **颜色自动绑定**：OCR 识别的色值入库时自动创建 AMS 颜色映射，省去二次手动绑定
-- **降级方案**：OCR 识别失败时支持完全手动添加
-
-技术栈：Tesseract.js（纯前端 OCR，中英文双语）+ Canvas 取色 + 正则解析。入口见上方「新增库存」截图。
-
-### 耗材库存管理
-
-- **耗材库录入**：按「材质 + 颜色 + 品牌」唯一键录入，支持同键合并入库（自动累加剩余量）
-- **库存状态跟踪**：自动维护剩余克数、卷数、单价、总价
-- **库存调整记录**：支持手动盘点调整（增减克数），完整账本流水可追溯
-- **颜色绑定**：库存项可绑定 AMS 颜色码，方便打印时按颜色匹配扣减
-- **归档管理**：删除库存只归档不丢历史，支持恢复
-
-### 自动消耗记录与成本统计
-
-- **三重消耗计算策略**（打印结束时依次尝试）：
-  1. 切片文件元数据估算（实际首选，gcode.3mf 解析每色克数）
-  2. AMS 剩余量差值（备选，RFID 精度有限默认关闭）
-  3. 人工录入/纠错（兜底）
-- **两阶段扣减**：打印开始时按 gcode 预估预扣（reservation），打印结束时按实际结算确认
-- **多色打印分摊**：支持多托盘打印的消耗按托盘分摊计算
-- **自动成本核算**：根据耗材价格自动计算单次打印成本
-- **消耗记录幂等**：`(job_id, tray_id, segment_idx)` 部分唯一索引，防重复扣减
-- **账本冲正**：支持 void/reversal，数据可恢复
-
-### 历史查询与报表
-
-- **打印任务历史**：记录所有任务详情（状态、时长、起止时间、耗材消耗、gcode 文件）
-- **耗材卷账本**：每个库存项的完整使用流水（采购/调整/消耗/废弃）
-- **消耗统计报表**：按日、按月汇总消耗克数和折合成本
-
-### PWA、自适应与主题
-
-- **可安装**：PWA 安装到手机主屏或桌面后以独立窗口运行
-- **自适应**：宽度小于 1024px（手机、iPad 竖屏）使用底部六个标签；iPad 横屏和桌面使用顶部导航。详情页会保持对应标签选中
-- **主题**：浅色 / 深色 / 跟随系统，选择记在 localStorage（`bbs-theme`）
-- **安全区**：刘海和 Home 指示条用 `viewport-fit=cover` 与 `env(safe-area-inset-*)` 避开；弹层自带关闭按钮
-- **触控**：手机和 iPad 竖屏上按钮、输入框至少 44px；输入框 16px 字号，避免 iOS 聚焦时放大页面
-- **窄屏表格**：打印机托盘、任务、流水、报告在窄屏改成带字段名的卡片，操作按钮不被挤出屏幕
-- **离线**：Service Worker 预缓存应用壳，断网时打开 `/offline`
-
----
-
-## 🚀 快速开始
-
-### 方式一：本地源码启动（推荐，单机零依赖）
-
-> 适合个人工作室 / 单机部署，无需 Docker，SQLite 内置存储
-
-**前置依赖**：
-- Python 3.12+
-- Node.js 18+
-- uv（Python 包管理器，`brew install uv`）
-
-**启动步骤**：
+## 启动
 
 ```bash
-# 1. 克隆仓库
-git clone https://github.com/baiyz0825/Bambu_consumables_management.git
-cd Bambu_consumables_management
-
-# 2. 创建 Python 虚拟环境并安装依赖
 uv venv .venv
-uv pip install -r backend/requirements.txt
-uv pip install -r collector/requirements.txt
-
-# 3. 安装前端依赖
+uv pip install -r backend/requirements.txt -r collector/requirements.txt
 cd frontend && npm install && cd ..
-
-# 4. 一键启动（自动生成 .env.local + 建库 + 启动三服务）
 ./run_local.sh start
 ```
 
-**访问地址**：
-- 前端界面：`http://localhost:3000`
-- 后端 API 文档：`http://localhost:8000/docs`
-- 健康检查：`http://localhost:8000/health`
+界面在 `http://localhost:3000`。完整步骤见 [快速开始](docs/快速开始.md)。
 
-**常用命令**：
-
-```bash
-./run_local.sh start     # 启动 backend + collector + frontend
-./run_local.sh stop      # 停止所有服务
-./run_local.sh restart   # 重启
-./run_local.sh status    # 查看运行状态
-./run_local.sh logs      # 查看实时日志
-```
-
-**数据存储位置**：`data/consumables.db`（SQLite，WAL 模式，支持并发读写）
-
-### 方式二：Docker Compose 部署（PostgreSQL）
-
-> 适合多用户 / 服务器部署，PostgreSQL 后端
-
-**前置依赖**：Docker 20.10+ / Docker Compose v2.0+
-
-```bash
-# 1. 准备环境配置
-cp env.example .env
-# 编辑 .env，修改 APP_SECRET_KEY 和 NEXT_PUBLIC_API_BASE_URL
-
-# 2. 启动全部服务（db + api + collector + frontend）
-docker compose up -d --build
-
-# 3. 验证
-docker compose ps
-curl http://localhost:8000/health
-```
-
-**镜像信息**（multi-arch manifest，含 `linux/amd64` + `linux/arm64`）：
-- API 服务：`ghcr.io/baiyz0825/3d-consumables-api:latest`
-- 采集器：`ghcr.io/baiyz0825/3d-consumables-collector:latest`
-- 前端：`ghcr.io/baiyz0825/3d-consumables-frontend:latest`
-
-> 镜像由 GitHub Actions 自动构建并推送到 GHCR：push 到 `main` 发布 `latest` + 短 sha，
-> 推送 `v*` 标签发布语义化版本（如 `v1.2.3`）。`docker pull` 会按本机架构自动匹配，
-> Apple Silicon Mac、树莓派 4/5、ARM 云主机均可直接使用预构建镜像。详见 [GHCR快速部署指南](docs/GHCR快速部署指南.md)。
-
----
-
-## ⚙️ 配置说明
-
-### 环境变量
-
-| 变量 | 默认值 | 说明 |
-|---|---|---|
-| `DATABASE_URL` | `sqlite+aiosqlite:///./data/consumables.db` | 数据库连接串。PostgreSQL 部署时设为 `postgresql+asyncpg://user:pass@host:5432/db` |
-| `APP_SECRET_KEY` | `dev-secret-change-me` | Fernet 对称加密密钥，用于加密打印机 LAN 访问码。**生产环境务必更换** |
-| `APP_ENV` | `dev` | 运行环境（dev/prod），影响日志级别 |
-| `ALLOW_INSECURE_MQTT_TLS` | `True` | 是否跳过 MQTT TLS 证书校验（拓竹自签证书需开启） |
-| `MATERIAL_AMS_CALIBRATION_ENABLED` | `False` | 是否启用 AMS 剩余量差值校准（RFID 精度有限，默认关闭） |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8000` | 前端访问后端 API 的基础地址（浏览器侧） |
-
-### 数据库切换
-
-默认 SQLite 单机模式，切换到 PostgreSQL 只需设置环境变量：
-
-```bash
-# SQLite（默认）
-export DATABASE_URL="sqlite+aiosqlite:///./data/consumables.db"
-
-# PostgreSQL
-export DATABASE_URL="postgresql+asyncpg://consumables:consumables@localhost:5432/consumables"
-```
-
-代码层面已做跨方言适配（`Uuid` / `JSON` / 部分唯一索引 `sqlite_where` + `postgresql_where`），两种数据库自动建表。
-
----
-
-## 📡 打印机接入流程
-
-### 方式一：局域网扫描（推荐）
-
-「打印机」页 → 「扫描局域网」→ 弹窗内提供两种发现方式：
-
-1. **mDNS 扫描（默认）**：监听拓竹服务类型（8 秒窗口），可拿到 IP/序列号/型号/固件版本
-2. **网段扫描（兜底）**：mDNS 扫不到时（AP 隔离 / 跨 VLAN / 组播被禁 / 打印机未广播）改用此方式，
-   输入网段（如 `192.168.9`）后并发探测 8883 端口，1~2 秒即可列出在线设备（无序列号，需手输）
-
-选中设备后 IP/型号自动填入表单，再补 LAN 访问码即可添加。
-
-### 方式二：手动添加
-
-在「打印机」页的「添加打印机」表单中手动填写：
-- **IP 地址**：打印机局域网 IP（如 `192.168.1.100`）
-- **序列号**：打印机底部标签或屏幕「关于」中查看（如 `A1Pxxxxx`）
-- **LAN 访问码**：打印机屏幕「设置 → 网络」中查看（8 位数字）
-- **别名**（可选）：自定义显示名
-- **型号**（可选）：如 `P1S` / `X1C` / `A1`
-
----
-
-## 📷 耗材录入流程
-
-### 方式一：拍照 OCR 识别（推荐）
-
-1. 打开「库存」页 → 点「新增库存」
-2. 在弹窗顶部点「拍照识别」
-3. 拍摄耗材标签（或上传图片）
-4. 系统自动识别：
-   - **材质**：PLA / PETG / TPU / ABS / ASA / PC / PA-CF 等主流材质
-   - **单卷重量**：自动识别 `1.00kg` / `1000g` 等格式并换算为克
-   - **颜色**：图像取色 hex + OCR 文本颜色名双保险
-   - **品牌**：拓竹 / Polymaker / eSun / Sunlu 等
-5. 识别结果展示置信度，点「填入表单」预填
-6. 核对/修改后点「添加」完成录入
-
-### 方式二：手动添加
-
-在「新增库存」表单中手动填写材质、颜色、品牌、单卷克数、卷数、价格等。
-
----
-
-## 🏗️ 技术架构
-
-### 三服务架构（数据库当消息队列，零中间件依赖）
-
-```
-拓竹打印机 ──MQTT(TLS 8883, bblp/访问码)──► collector ──写事件──► 数据库
-     └─FTPS(990) 下载.gcode.3mf→解析耗量──┘                      ▲
-                                                                  │每2s轮询事件
-                                              backend(EventProcessor)
-                                              结算消耗→扣库存→写账本
-                                                                  ▲
-                                              frontend ◄──REST + SSE┘
-```
-
-| 服务 | 目录 | 技术栈 | 职责 |
-|---|---|---|---|
-| **backend** | `backend/` | Python 3.12 + FastAPI + SQLAlchemy 2.0 (async) + Pydantic | REST API、事件结算、SSE 实时推送、报表 |
-| **collector** | `collector/` | Python + paho-mqtt + orjson + zeroconf | 连接拓竹 LAN MQTT、采集报文、mDNS 扫描 |
-| **frontend** | `frontend/` | Next.js 15 (App Router) + React 19 + Tailwind + shadcn/ui + Tesseract.js | 仪表盘、PWA、OCR、主题切换 |
-
-### 关键设计
-
-- **DB 事件表 + 轮询（Outbox 模式）**：collector 写 `normalized_events`，backend 的 `EventProcessor` 每 2 秒按 `id > last_id` 增量消费，零 MQ 依赖
-- **托盘快照 + 部分唯一索引**：`spool_binding_snapshot_json` 存打印开始时的托盘快照，`(job_id, tray_id, segment_idx)` 部分唯一索引保证结算幂等
-- **账本 + 冲正**：`MaterialLedger` 支持 void/reversal，数据可恢复
-- **跨方言双数据库**：`Uuid` / `JSON` / `sqlite_where` + `postgresql_where` 适配，SQLite 单机 + PostgreSQL 多用户
-- **Fernet 加密**：打印机 LAN 访问码加密存储，密钥通过 `APP_SECRET_KEY` 配置
-
-### 数据库 ER 概览
-
-核心实体（11 个）：
-- `Printer` / `PrintJob` / `ConsumptionRecord` / `MaterialStock` / `MaterialLedger`
-- `raw_event` / `normalized_event`（事件管道）
-- `TrayMapping` / `Spool` / `AmsColorMapping` / `InventoryAdjustment`
-
----
-
-## 📚 API 文档
-
-启动后端后访问 Swagger UI：`http://localhost:8000/docs`
-
-主要路由模块：
-
-| 路由前缀 | 模块 | 说明 |
-|---|---|---|
-| `/printers` | 打印机管理 | CRUD + `GET /printers/scan` mDNS 扫描 + `POST /printers/scan-subnet` 网段探测 + `GET /printers/network-info` |
-| `/printers/{id}/latest-report` | 实时报告 | 最新 MQTT 上报数据 |
-| `/realtime/printers` | SSE 流 | 实时推送打印机状态变化 |
-| `/stocks` | 耗材库存 | CRUD + 合并入库 + `color_hex` 自动绑定 |
-| `/stocks/{id}/bind-color` | 颜色绑定 | 绑定 AMS 颜色码 |
-| `/jobs` | 打印任务 | 任务历史 + 人工录入消耗 + 纠错 |
-| `/tray-mappings` | 托盘映射 | 打印机托盘 ↔ 库存项绑定/解绑（`stock_id`，兼容 legacy `spool_id`） |
-| `/trays` | 料盘管理 | 料盘总数 + 丢弃 |
-| `/color-mappings` | 颜色映射 | AMS 颜色码 ↔ 颜色名 CRUD |
-| `/reports` | 报表 | summary / monthly / daily |
-| `/material-ledger` | 账本 | 冲正流水 |
-
----
-
-## 前端页面
-
-页面和截图见文首「界面一览」。导航在手机、iPad 竖屏上是底部标签，在 iPad 横屏和桌面上是顶栏。主题按钮在顶栏右侧，循环为浅色、深色、跟随系统。
-
----
-
-## 🛠️ 开发指南
-
-### 项目结构
-
-```
-Bambu_consumables_management/
-├── backend/                 # FastAPI 后端
-│   ├── app/
-│   │   ├── api/routers/     # 路由（printers/stocks/jobs/...）
-│   │   ├── db/models/       # ORM 模型（11 个实体）
-│   │   ├── schemas/         # Pydantic schema
-│   │   ├── services/        # 业务服务（event_processor/bambu_discovery/...）
-│   │   └── core/            # 配置、加密
-│   └── requirements.txt
-├── collector/               # MQTT 采集器
-│   ├── collector/
-│   │   ├── main.py          # MQTT watcher 主循环
-│   │   ├── gcode_estimator.py  # .gcode.3mf 切片耗量解析
-│   │   └── db/              # 共享模型副本
-│   └── requirements.txt
-├── frontend/                # Next.js 15 前端
-│   ├── app/                 # App Router 页面
-│   ├── components/          # 组件（app-shell/ocr-scanner/printer-scan-dialog/...）
-│   ├── lib/                 # 工具（api/filament-parser/color-extractor/...）
-│   └── package.json
-├── docs/                    # 文档 + 截图
-├── run_local.sh             # 本地一键启动脚本
-├── docker-compose.yml       # 源码构建部署
-└── docker-compose.ghcr.yml  # GHCR 预构建镜像部署
-```
-
-### 本地开发
-
-```bash
-# 启动后端（热重载）
-cd backend && ../.venv/bin/uvicorn app.main:app --reload --port 8000
-
-# 启动采集器
-cd collector && ../.venv/bin/python -m collector.main
-
-# 启动前端（热重载）
-cd frontend && npm run dev
-```
-
-### 生成 PWA 图标
-
-```bash
-cd frontend && node scripts/gen-icons.js
-# 输出到 public/icons/（192/512/maskable-512/apple-touch-180）
-```
-
----
-
-## 📖 更多文档
-
-- [GHCR 快速部署指南](docs/GHCR快速部署指南.md)
-- [局域网读取方法](docs/局域网读取方法.md)
-- [备份与恢复](docs/备份与恢复.md)
-- [升级与回滚](docs/升级与回滚.md)
-- [当前进度与已实现功能](docs/当前进度与已实现功能.md)
-- [实现路径](docs/实现路径.md)
-
----
-
-## 📝 更新日志
-
-### v2.0（单机版改造）
-
-- ✅ SQLite 单机模式支持（跨方言双支持 SQLite/PostgreSQL）
-- ✅ PWA 可安装到桌面 + 移动端自适应布局（底部 Tab Bar）
-- ✅ 暗色/亮色/跟随系统主题切换
-- ✅ 拍照 OCR 识别耗材（材质/颜色/重量/品牌 + 图像取色）
-- ✅ 局域网 mDNS 自动扫描拓竹打印机
-- ✅ 一键本地启动脚本 `run_local.sh`
-- ✅ 代码规范化（PEP 257 docstring + 标准 logging + agent-log 噪音清理）
-
-### v1.0（原版）
-
-- 三服务架构（backend/collector/frontend）
-- MQTT 实时监控 + AMS 托盘状态
-- 三重消耗计算策略
-- 账本冲正 + 幂等扣减
-- 报表（按日 / 按月）
-
----
-
-## 📄 License
+## License
 
 MIT
-

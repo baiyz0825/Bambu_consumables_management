@@ -1,6 +1,6 @@
 # frontend（Next.js 15）
 
-界面是 App Router + Tailwind。页面、按钮和自适应说明见仓库根目录 [README](../README.md) 的「界面一览」。
+界面是 App Router + Tailwind。页面、按钮和自适应说明见 [界面](../docs/界面.md)。
 
 ## 页面
 

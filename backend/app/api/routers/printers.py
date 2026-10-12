@@ -164,7 +164,14 @@ async def create_printer(body: PrinterCreate, db: AsyncSession = Depends(get_db)
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="printer serial already exists")
+        existing = (await db.execute(select(Printer).where(Printer.serial == body.serial))).scalars().first()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "同一台打印机已存在，请更新它的局域网地址，不要再加一台",
+                "printer_id": str(existing.id) if existing else None,
+            },
+        )
     await db.refresh(p)
     return p
 
