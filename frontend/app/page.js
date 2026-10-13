@@ -133,47 +133,47 @@ export default function Page() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-        <Card className="border-transparent bg-[hsl(var(--tint-green))]">
+        <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">在线打印机</CardTitle>
             <CardDescription>来自实时通道</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-green-ink))]">
+            <div className="text-3xl font-semibold tracking-tight text-foreground">
               {online}/{total}
             </div>
           </CardContent>
         </Card>
-        <Card className="border-transparent bg-[hsl(var(--tint-blue))]">
+        <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">正在打印</CardTitle>
             <CardDescription>运行中</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-blue-ink))]">
+            <div className="text-3xl font-semibold tracking-tight text-foreground">
               {printingPrinters.length}
             </div>
           </CardContent>
         </Card>
-        <Card className="border-transparent bg-[hsl(var(--tint-orange))]">
+        <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">今日消耗</CardTitle>
             <CardDescription>克数 / 成本估算</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-orange-ink))]">
+            <div className="text-3xl font-semibold tracking-tight text-foreground">
               {summary?.today?.grams ?? "-"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">≈ {summary?.today?.cost_est ?? "-"} 元</div>
           </CardContent>
         </Card>
-        <Card className="border-transparent bg-[hsl(var(--tint-purple))]">
+        <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">近 7 天消耗</CardTitle>
             <CardDescription>克数 / 成本估算</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-purple-ink))]">
+            <div className="text-3xl font-semibold tracking-tight text-foreground">
               {summary?.last?.grams ?? "-"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">≈ {summary?.last?.cost_est ?? "-"} 元</div>

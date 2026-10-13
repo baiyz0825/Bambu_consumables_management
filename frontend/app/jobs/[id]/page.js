@@ -240,13 +240,13 @@ export default function Page({ params }) {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="border-transparent bg-[hsl(var(--tint-orange))]">
+        <Card>
           <CardHeader>
             <CardTitle>消耗汇总</CardTitle>
             <CardDescription>来自 `consumption_records`（自动或手工）。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-orange-ink))]">{totalGrams}</div>
+            <div className="text-3xl font-semibold tracking-tight text-foreground">{totalGrams}</div>
             <div className="mt-2 text-sm text-muted-foreground">单位：g</div>
           </CardContent>
         </Card>

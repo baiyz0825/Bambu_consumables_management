@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DataCell, DataTable } from "../../../components/ui/data-table";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
+import { FilamentSpool, spoolPercent } from "../../../components/filament-spool";
 
 function fmtTime(iso) {
   if (!iso) return "-";
@@ -95,6 +96,10 @@ export default function Page({ params }) {
   const [editStockOpen, setEditStockOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
   const [voidTarget, setVoidTarget] = useState(null); // { kind: "adjustment"|"manual_stock_consumption", row }
+  const [printConsumptions, setPrintConsumptions] = useState([]);
+  const [adjustGrams, setAdjustGrams] = useState("");
+  const [adjusting, setAdjusting] = useState(false);
+  const [adjustError, setAdjustError] = useState("");
 
   const form = useForm({
     resolver: zodResolver(adjustmentSchema),
@@ -142,14 +147,17 @@ export default function Page({ params }) {
     if (!stockId) return;
     setLoading(true);
     try {
-      const [s, l, v] = await Promise.all([
+      const [s, l, v, prints] = await Promise.all([
         fetchJson(`/stocks/${stockId}`),
         fetchJson(`/stocks/${stockId}/ledger`),
-        fetchJson(`/stocks/${stockId}/valuation`).catch(() => null)
+        fetchJson(`/stocks/${stockId}/valuation`).catch(() => null),
+        fetchJson(`/stocks/${stockId}/print-consumptions`)
       ]);
       setStock(s);
       setLedger(Array.isArray(l) ? l : []);
       setValuation(v && typeof v === "object" ? v : null);
+      setPrintConsumptions(Array.isArray(prints) ? prints : []);
+      setAdjustGrams(s && s.remaining_grams != null ? String(s.remaining_grams) : "");
     } finally {
       setLoading(false);
     }
@@ -165,6 +173,50 @@ export default function Page({ params }) {
     const s = String(note || "");
     const m = s.match(/consumption=([0-9a-fA-F-]{36})/);
     return m ? m[1] : null;
+  }
+
+  function adjustmentErrorText(e) {
+    if (e instanceof ApiError) {
+      if (typeof e.detail === "string" && e.detail.trim()) return e.detail;
+      if (e.detail && typeof e.detail === "object" && !Array.isArray(e.detail) && typeof e.detail.message === "string") {
+        return e.detail.message;
+      }
+      if (Array.isArray(e.detail)) {
+        const msgs = e.detail.map((item) => (item && typeof item.msg === "string" ? item.msg : "")).filter(Boolean);
+        if (msgs.length) return msgs.join("；");
+      }
+      return e.message || "调整失败";
+    }
+    return String(e?.message || e || "调整失败");
+  }
+
+  async function submitRemainingAdjust(event) {
+    event.preventDefault();
+    if (!stock || adjusting) return;
+    const raw = String(adjustGrams).trim();
+    if (!/^\d+$/.test(raw)) {
+      setAdjustError("请输入不小于 0 的整数克数");
+      return;
+    }
+    const next = Number(raw);
+    const current = Number(stock.remaining_grams || 0);
+    setAdjusting(true);
+    setAdjustError("");
+    try {
+      await fetchJson(`/stocks/${stockId}/adjustments`, {
+        method: "POST",
+        body: JSON.stringify({
+          delta_grams: next - current,
+          reason: "手动调整余量"
+        })
+      });
+      toast.success("已调整余量");
+      await reload();
+    } catch (e) {
+      setAdjustError(adjustmentErrorText(e));
+    } finally {
+      setAdjusting(false);
+    }
   }
 
   async function submitAdjustment(values) {
@@ -312,93 +364,191 @@ export default function Page({ params }) {
         </div>
       </div>
 
+      <Card>
+        <CardContent className="p-4 sm:p-6">
+          <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-center">
+            <FilamentSpool
+              colors={stock?.color_hex}
+              percent={stock ? spoolPercent(stock.remaining_grams, stock.roll_weight_grams) : 0}
+              size={240}
+              title={
+                stock
+                  ? `${stock.material} ${stock.color} ${stock.brand} 剩余 ${stock.remaining_grams}g`
+                  : "库存"
+              }
+            />
+            <div className="w-full min-w-0 max-w-md space-y-4">
+              <div>
+                <div className="break-words text-xl font-semibold tracking-tight text-foreground">
+                  {stock ? `${stock.material} · ${stock.color} · ${stock.brand}` : "加载中…"}
+                </div>
+                <div className="mt-1 text-muted-foreground">
+                  剩余 <span className="font-medium text-foreground">{stock ? `${stock.remaining_grams}g` : "-"}</span>
+                  {stock ? ` · 单卷 ${stock.roll_weight_grams}g` : ""}
+                </div>
+              </div>
+              <form className="grid gap-2" onSubmit={submitRemainingAdjust}>
+                <Label htmlFor="adjust-remaining">调整余量</Label>
+                <Input
+                  id="adjust-remaining"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={adjustGrams}
+                  onChange={(e) => {
+                    setAdjustGrams(e.target.value);
+                    if (adjustError) setAdjustError("");
+                  }}
+                  disabled={adjusting || !stock}
+                />
+                <p className="text-sm text-muted-foreground">填写调整后的剩余克数，不是增减量。</p>
+                {adjustError ? (
+                  <div className="text-sm text-destructive" role="alert">
+                    {adjustError}
+                  </div>
+                ) : null}
+                <Button type="submit" disabled={adjusting || !stock} className="w-full sm:w-auto">
+                  {adjusting ? "保存中…" : "保存余量"}
+                </Button>
+              </form>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
-        <Card className="border-transparent bg-[hsl(var(--tint-blue))]">
+        <Card>
           <CardHeader>
             <CardTitle>剩余</CardTitle>
             <CardDescription>总库存剩余（估算）。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-blue-ink))]">
+            <div className="text-3xl font-semibold tracking-tight text-foreground">
               {stock ? stock.remaining_grams : "-"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：g</div>
           </CardContent>
         </Card>
-        <Card className="border-transparent bg-[hsl(var(--tint-green))]">
+        <Card>
           <CardHeader>
             <CardTitle>单卷克数</CardTitle>
             <CardDescription>用于 AMS remain% → 克数 的换算。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-green-ink))]">
+            <div className="text-3xl font-semibold tracking-tight text-foreground">
               {stock ? stock.roll_weight_grams : "-"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：g/卷</div>
           </CardContent>
         </Card>
-        <Card className="border-transparent bg-[hsl(var(--tint-orange))]">
+        <Card>
           <CardHeader>
             <CardTitle>流水合计</CardTitle>
             <CardDescription>当前列表中 delta_grams 的合计（便于核对）。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-orange-ink))]">{totalDelta}</div>
+            <div className="text-3xl font-semibold tracking-tight text-foreground">{totalDelta}</div>
             <div className="mt-2 text-sm text-muted-foreground">单位：g</div>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-        <Card className="border-transparent bg-[hsl(var(--tint-purple))]">
+        <Card>
           <CardHeader>
             <CardTitle>累计购入总价值</CardTitle>
             <CardDescription>该库存项可计价入库累计（元）。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-purple-ink))]">
+            <div className="text-3xl font-semibold tracking-tight text-foreground">
               {valuation && typeof valuation.purchased_value_total === "number" ? fmtMoney(valuation.purchased_value_total) : "-"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：元</div>
           </CardContent>
         </Card>
-        <Card className="border-transparent bg-[hsl(var(--tint-orange))]">
+        <Card>
           <CardHeader>
             <CardTitle>已消耗价值</CardTitle>
             <CardDescription>按移动加权平均估算（仅计已计价部分）。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-orange-ink))]">
+            <div className="text-3xl font-semibold tracking-tight text-foreground">
               {valuation && typeof valuation.consumed_value_est === "number" ? fmtMoney(valuation.consumed_value_est) : "-"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：元</div>
           </CardContent>
         </Card>
-        <Card className="border-transparent bg-[hsl(var(--tint-green))]">
+        <Card>
           <CardHeader>
             <CardTitle>当前剩余价值</CardTitle>
             <CardDescription>已计价余额的剩余成本估算。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-green-ink))]">
+            <div className="text-3xl font-semibold tracking-tight text-foreground">
               {valuation && typeof valuation.remaining_value_est === "number" ? fmtMoney(valuation.remaining_value_est) : "-"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：元</div>
           </CardContent>
         </Card>
-        <Card className="border-transparent bg-[hsl(var(--tint-blue))]">
+        <Card>
           <CardHeader>
             <CardTitle>已消耗卷数</CardTitle>
             <CardDescription>按消耗克数 / 单卷克数估算。</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold tracking-tight text-[hsl(var(--tint-blue-ink))]">
+            <div className="text-3xl font-semibold tracking-tight text-foreground">
               {valuation && typeof valuation.consumed_rolls_est === "number" ? round2(valuation.consumed_rolls_est) : "-"}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">单位：卷（估算）</div>
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>打印消耗</CardTitle>
+          <CardDescription>使用这条库存的打印任务，以及不关联任务的手工扣料。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {printConsumptions.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">暂无消耗记录</div>
+          ) : (
+            <ul>
+              {printConsumptions.map((row) => {
+                const when = row.started_at || row.created_at;
+                const name = row.job_id ? row.file_name || "未命名任务" : "手工扣料";
+                return (
+                  <li
+                    key={row.id}
+                    className="grid gap-2 border-t py-4 first:border-t-0 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center sm:gap-6"
+                  >
+                    <div className="min-w-0">
+                      {row.job_id ? (
+                        <Button
+                          asChild
+                          variant="link"
+                          size="sm"
+                          className="h-auto min-h-11 max-w-full justify-start whitespace-normal text-left"
+                        >
+                          <Link className="break-all" href={`/jobs/${row.job_id}`}>
+                            {name}
+                          </Link>
+                        </Button>
+                      ) : (
+                        <div className="flex min-h-11 items-center text-foreground">{name}</div>
+                      )}
+                    </div>
+                    <div className="text-foreground">{row.grams}g</div>
+                    <div className="text-muted-foreground">{fmtMoney(row.cost_est)} 元</div>
+                    <div className="text-muted-foreground">{fmtTime(when)}</div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

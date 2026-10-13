@@ -15,6 +15,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { PrinterScanDialog } from "../../components/printer-scan-dialog";
 import { TrayBindDialog } from "../../components/tray-bind-dialog";
+import { FilamentSpool } from "../../components/filament-spool";
 
 function formatGcodeState(st) {
   if (!st) return "-";
@@ -536,6 +537,7 @@ export default function Page() {
                               ? `多品牌冲突：${candidates.map((c) => c.brand).join(" / ")}（打印后归因）`
                               : "未匹配（去库存新增）";
                       const remainText = isMissing ? "-" : pct == null ? (t?.remain == null ? "-" : t.remain) : `${Math.round(pct)}%`;
+                      const spoolRemain = pct != null && pct >= 0 && pct <= 100 ? pct : 0;
                       return (
                         <tr key={key} className={`border-t ${isActiveTray ? "bg-accent/30" : ""}`}>
                           <DataCell label="托盘" valueClassName="font-medium">
@@ -543,7 +545,15 @@ export default function Page() {
                           </DataCell>
                           <DataCell label="材质">{material}</DataCell>
                           <DataCell label="颜色">
-                            <div>{colorDisplay}</div>
+                            <div className="flex items-center gap-3">
+                              <FilamentSpool
+                                colors={colorHex}
+                                percent={spoolRemain}
+                                size={96}
+                                title={`托盘 ${trayId} ${colorDisplay}`}
+                              />
+                              <div className="min-w-0 text-foreground">{colorDisplay}</div>
+                            </div>
                             {colorHex && !mappedName && !isMissing ? (
                               <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
                                 <Input
