@@ -1,5 +1,6 @@
 from .consumption_record import ConsumptionRecord  # noqa: F401
 from .ams_color_mapping import AmsColorMapping  # noqa: F401
+from .brand_price import BrandPrice  # noqa: F401
 from .inventory_adjustment import InventoryAdjustment  # noqa: F401
 from .material_ledger import MaterialLedger  # noqa: F401
 from .material_stock import MaterialStock  # noqa: F401
@@ -12,6 +13,7 @@ from .spool import Spool  # noqa: F401
 from .tray_mapping import TrayMapping  # noqa: F401
 
 from . import ams_color_mapping  # noqa: F401
+from . import brand_price  # noqa: F401
 from . import consumption_record  # noqa: F401
 from . import inventory_adjustment  # noqa: F401
 from . import material_ledger  # noqa: F401

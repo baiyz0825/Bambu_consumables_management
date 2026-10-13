@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db
 from app.core.config import settings
 from app.db.models.ams_color_mapping import AmsColorMapping
+from app.db.models.brand_price import BrandPrice
 from app.db.models.consumption_record import ConsumptionRecord
 from app.db.models.material_ledger import MaterialLedger
 from app.db.models.material_stock import MaterialStock
@@ -36,6 +37,7 @@ from app.schemas.stock import (  # noqa: F401 — used by response_model
     StockUpdate,
     VoidRequest,
 )
+from app.services.consumption_breakdown import estimate_cost
 from app.services.pricing_service import (
     PricingConflict,
     derive_missing_price_per_roll,
@@ -364,6 +366,43 @@ async def create_stock(body: StockCreate, db: AsyncSession = Depends(get_db)) ->
         delta_grams=int(delta_grams),
         remaining_grams_after=int(after),
     )
+
+
+@router.get("/{stock_id}/print-consumptions")
+async def list_print_consumptions(stock_id: UUID, db: AsyncSession = Depends(get_db)) -> list[dict]:
+    """这条库存被哪些打印（以及手工扣料）消耗过。作废记录不返回。"""
+    stock = await db.get(MaterialStock, stock_id)
+    if not stock:
+        raise HTTPException(status_code=404, detail="stock not found")
+    price_row = await db.get(BrandPrice, stock.brand)
+    price = None if price_row is None else price_row.price_per_kg
+
+    stmt = (
+        select(ConsumptionRecord, PrintJob)
+        .outerjoin(PrintJob, ConsumptionRecord.job_id == PrintJob.id)
+        .where(
+            ConsumptionRecord.stock_id == stock_id,
+            ConsumptionRecord.voided_at.is_(None),
+        )
+        .order_by(ConsumptionRecord.created_at.desc(), ConsumptionRecord.id.desc())
+    )
+    loaded = (await db.execute(stmt)).all()
+    out: list[dict] = []
+    for rec, job in loaded:
+        grams = int(rec.grams or 0)
+        out.append(
+            {
+                "id": rec.id,
+                "grams": grams,
+                "created_at": rec.created_at,
+                "job_id": rec.job_id,
+                "file_name": None if job is None else job.file_name,
+                "status": None if job is None else job.status,
+                "started_at": None if job is None else job.started_at,
+                "cost_est": estimate_cost(grams, price),
+            }
+        )
+    return out
 
 
 @router.get("/{stock_id}", response_model=StockOut)

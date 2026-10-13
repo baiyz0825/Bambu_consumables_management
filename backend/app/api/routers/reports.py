@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
+from app.db.models.ams_color_mapping import AmsColorMapping
+from app.db.models.brand_price import BrandPrice
 from app.db.models.consumption_record import ConsumptionRecord
 from app.db.models.material_ledger import MaterialLedger
+from app.db.models.material_stock import MaterialStock
+from app.services.consumption_breakdown import breakdown_range, build_consumption_breakdown
 
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -260,5 +265,75 @@ async def daily_report(
         "to_date": today.isoformat(),
         "daily": daily,
     }
+
+
+@router.get("/breakdown")
+async def breakdown_report(
+    granularity: Literal["day", "week", "month"] = Query(default="day"),
+    span: int = Query(default=30, ge=1, le=366),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """按日/周/月堆叠消耗。成本只用品牌单价，不用移动加权平均。"""
+    today = datetime.now(timezone.utc).date()
+    start_date, end_date_exclusive, _keys = breakdown_range(today, granularity, span)
+    start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+    end_dt = datetime.combine(end_date_exclusive, datetime.min.time(), tzinfo=timezone.utc)
+
+    latest_color_mapping = (
+        select(
+            AmsColorMapping.color_name,
+            AmsColorMapping.color_hex,
+            func.row_number()
+            .over(
+                partition_by=AmsColorMapping.color_name,
+                order_by=AmsColorMapping.updated_at.desc(),
+            )
+            .label("rn"),
+        ).subquery()
+    )
+
+    stmt = (
+        select(
+            ConsumptionRecord.created_at,
+            ConsumptionRecord.grams,
+            MaterialStock.color,
+            MaterialStock.brand,
+            MaterialStock.material,
+            latest_color_mapping.c.color_hex,
+        )
+        .join(MaterialStock, MaterialStock.id == ConsumptionRecord.stock_id)
+        .outerjoin(
+            latest_color_mapping,
+            (MaterialStock.color == latest_color_mapping.c.color_name) & (latest_color_mapping.c.rn == 1),
+        )
+        .where(
+            ConsumptionRecord.stock_id.is_not(None),
+            ConsumptionRecord.voided_at.is_(None),
+            ConsumptionRecord.created_at >= start_dt,
+            ConsumptionRecord.created_at < end_dt,
+        )
+    )
+    loaded = (await db.execute(stmt)).all()
+    rows = [
+        {
+            "created_at": created_at,
+            "grams": int(grams or 0),
+            "color": color,
+            "color_hex": color_hex,
+            "brand": brand,
+            "material": material,
+        }
+        for created_at, grams, color, brand, material, color_hex in loaded
+    ]
+
+    price_rows = (await db.execute(select(BrandPrice))).scalars().all()
+    prices_by_brand = {row.brand: row.price_per_kg for row in price_rows}
+    return build_consumption_breakdown(
+        rows,
+        prices_by_brand=prices_by_brand,
+        granularity=granularity,
+        span=span,
+        today=today,
+    )
 
 
