@@ -25,7 +25,7 @@ export function ThemeToggle({ className }) {
         type="button"
         aria-label="切换主题"
         className={cn(
-          "inline-flex h-11 w-11 items-center justify-center rounded-xl border border-input bg-card text-foreground opacity-50 shadow-sm lg:h-9 lg:w-9",
+          "inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#f5f5f7] text-foreground opacity-50 lg:h-9 lg:w-9 dark:bg-[#2c2c2e] dark:text-white",
           className
         )}
       >
@@ -51,7 +51,7 @@ export function ThemeToggle({ className }) {
       aria-label={`切换主题（当前：${label}）`}
       title={`主题：${label}`}
       className={cn(
-        "inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-input bg-card text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:h-9 lg:w-9",
+        "inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-[#f5f5f7] text-foreground transition-colors duration-200 hover:bg-[#e8e8ed] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] active:scale-[0.98] lg:h-9 lg:w-9 dark:bg-[#2c2c2e] dark:text-white dark:hover:bg-[#3a3a3c] dark:focus-visible:ring-[#0a84ff]",
         className
       )}
     >

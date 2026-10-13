@@ -156,10 +156,10 @@ function NavLink({ href, label, active }) {
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "shrink-0 rounded-full px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "shrink-0 rounded-full px-3 py-2 text-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] dark:focus-visible:ring-[#0a84ff]",
         active
-          ? "bg-primary/10 font-medium text-primary"
-          : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
+          ? "bg-[#0071e3]/10 font-medium text-[#0071e3] dark:bg-[#0a84ff]/10 dark:text-[#0a84ff]"
+          : "text-muted-foreground hover:bg-[#f5f5f7] hover:text-foreground dark:hover:bg-white/10 dark:hover:text-white"
       )}
     >
       {label}
@@ -172,15 +172,17 @@ function MobileTabItem({ href, label, icon, active }) {
     <Link
       href={href}
       className={cn(
-        "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:text-xs",
-        active ? "font-medium text-primary" : "text-muted-foreground hover:text-foreground"
+        "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-[11px] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0071e3] dark:focus-visible:ring-[#0a84ff] sm:text-xs",
+        active
+          ? "font-medium text-[#0071e3] dark:text-[#0a84ff]"
+          : "text-muted-foreground hover:text-foreground"
       )}
       aria-current={active ? "page" : undefined}
     >
       <span
         className={cn(
           "flex h-7 w-9 items-center justify-center rounded-full",
-          active && "bg-primary/15 text-primary"
+          active && "bg-[#0071e3]/10 text-[#0071e3] dark:bg-[#0a84ff]/10 dark:text-[#0a84ff]"
         )}
       >
         {icon}
@@ -196,11 +198,11 @@ export function AppShell({ children }) {
   return (
     <div className="min-h-safe">
       {/* 桌面顶部导航（md+ 显示）；pt-safe 为 iOS 刘海/PWA 状态栏留白 */}
-      <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-card/95 pt-safe shadow-[var(--shadow-bar)] backdrop-blur-xl dark:border-white/10">
-        <div className="container mx-auto flex min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2 md:px-6">
+      <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-white pt-safe dark:border-white/10 dark:bg-black">
+        <div className="container mx-auto flex min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-6 py-2 md:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex shrink-0 items-center gap-2 font-semibold tracking-tight">
-              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[var(--shadow-primary)]">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#0071e3] text-white dark:bg-[#0a84ff]">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M7 7h10v4a5 5 0 0 1-10 0V7Z" stroke="currentColor" strokeWidth="2" />
                   <path d="M12 16v4M8 20h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -222,11 +224,11 @@ export function AppShell({ children }) {
       </header>
 
       {/* 主内容区：lg 以下为底部 Tab Bar 留出高度与安全区 */}
-      <main className="container mx-auto min-w-0 px-4 pb-24 pt-6 md:px-6 lg:pb-8">{children}</main>
+      <main className="container mx-auto min-w-0 px-6 pb-24 pt-6 md:px-8 lg:pb-8">{children}</main>
 
       {/* 手机与 iPad 竖屏底部 Tab；iPad 横屏 / 桌面（lg+）改用顶部导航 */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-black/[0.06] bg-card/95 shadow-[0_-8px_24px_rgba(60,60,67,0.08)] backdrop-blur-xl dark:border-white/10 dark:shadow-[0_-8px_24px_rgba(0,0,0,0.45)] lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-black/[0.06] bg-white dark:border-white/10 dark:bg-black lg:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         aria-label="主导航"
       >

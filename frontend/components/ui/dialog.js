@@ -26,17 +26,17 @@ const DialogContent = React.forwardRef(({ className, children, ...props }, ref) 
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 z-50 grid w-[calc(100%-1.5rem)] max-w-lg -translate-x-1/2 gap-4 overflow-y-auto overscroll-contain border border-black/[0.06] bg-card p-4 shadow-[var(--shadow-card)] duration-200 dark:border-white/10",
+        "fixed left-1/2 z-50 grid w-[calc(100%-1.5rem)] max-w-lg -translate-x-1/2 gap-4 overflow-y-auto overscroll-contain rounded-2xl border border-black/[0.06] bg-white p-4 text-foreground shadow-[0_8px_24px_rgba(0,0,0,0.12)] duration-200 dark:border-white/10 dark:bg-[#1d1d1f] dark:text-white dark:shadow-[0_8px_24px_rgba(0,0,0,0.28)]",
         "top-[max(0.75rem,env(safe-area-inset-top))] max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1.5rem)]",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
-        "sm:top-1/2 sm:max-h-[min(85dvh,calc(100dvh-2rem))] sm:-translate-y-1/2 sm:rounded-2xl sm:p-6",
+        "sm:top-1/2 sm:max-h-[min(85dvh,calc(100dvh-2rem))] sm:-translate-y-1/2 sm:p-6",
         className
       )}
       {...props}
     >
       {children}
       <DialogPrimitive.Close
-        className="absolute right-3 top-3 inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="absolute right-3 top-3 inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-[#f5f5f7] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0071e3] active:scale-[0.98] dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:ring-[#0a84ff]"
         aria-label="关闭"
       >
         <svg
