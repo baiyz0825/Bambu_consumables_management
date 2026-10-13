@@ -1,136 +1,140 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
+import { ConsumptionChart } from "../../components/consumption-chart";
 import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import { DataCell, DataTable } from "../../components/ui/data-table";
+import { Card } from "../../components/ui/card";
 import { fetchJson } from "../../lib/api";
 
-/** 数字格式化：非有限值显示 "-"，否则按指定小数位输出。 */
-function fmtNum(v, digits = 1) {
-  const n = Number(v);
+const RANGES = [
+  { id: "day", label: "日", span: 14 },
+  { id: "week", label: "周", span: 8 },
+  { id: "month", label: "月", span: 6 }
+];
+
+function fmtGrams(value) {
+  const n = Number(value);
   if (!Number.isFinite(n)) return "-";
-  return n.toFixed(digits);
+  return n.toLocaleString("zh-CN", { maximumFractionDigits: 1 });
+}
+
+function fmtCost(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "-";
+  return n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export default function Page() {
-  const [monthly, setMonthly] = useState([]);
-  const [daily, setDaily] = useState([]);
+  const [granularity, setGranularity] = useState("day");
+  const [report, setReport] = useState(null);
   const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const reload = useCallback(async () => {
-    setErr("");
-    setLoading(true);
-    try {
-      const [d, m] = await Promise.all([
-        fetchJson("/reports/daily?days=30"),
-        fetchJson("/reports/monthly")
-      ]);
-      setDaily(Array.isArray(d?.daily) ? d.daily : []);
-      setMonthly(Array.isArray(m) ? m : []);
-    } catch (e) {
-      setErr(String(e?.message || e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    reload();
-  }, [reload]);
+    const range = RANGES.find((item) => item.id === granularity) || RANGES[0];
+    let cancelled = false;
+    setLoading(true);
+    setErr("");
+    fetchJson(`/reports/breakdown?granularity=${range.id}&span=${range.span}`)
+      .then((body) => {
+        if (!cancelled) setReport(body);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setReport(null);
+          setErr(String(e?.message || e));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [granularity]);
+
+  const totals = report?.totals || {};
+  const buckets = Array.isArray(report?.buckets) ? report.buckets : [];
 
   return (
-    <div className="space-y-6">
-      {/* 页头：窄屏竖排，避免按钮挤压溢出 */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">报告</h1>
-          <p className="text-sm text-muted-foreground">
-            按日/按月消耗统计（成本仅统计“已计价覆盖”的部分；未计价部分不计入成本）。
-          </p>
-        </div>
-        <Button variant="outline" onClick={reload} disabled={loading} className="w-full sm:w-auto">
-          {loading ? "加载中…" : "刷新"}
-        </Button>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">报告</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          按日、周、月查看消耗。每根柱是这一段时间里不同颜色耗材的克数。成本按品牌单价估算。
+        </p>
       </div>
 
-      {err ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          {err}
-        </div>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="统计粒度">
+        {RANGES.map((item) => (
+          <Button
+            key={item.id}
+            type="button"
+            variant={granularity === item.id ? "default" : "outline"}
+            aria-pressed={granularity === item.id}
+            onClick={() => setGranularity(item.id)}
+          >
+            {item.label}
+          </Button>
+        ))}
+      </div>
+
+      {loading ? <p className="text-sm text-muted-foreground">加载中…</p> : null}
+      {err ? <p className="text-sm text-destructive">{err}</p> : null}
+
+      {!loading && !err ? (
+        <Card className="space-y-8 p-6 sm:p-8">
+          <ConsumptionChart buckets={buckets} />
+          <p className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
+            <span>
+              消耗克数 <span className="font-medium text-foreground">{fmtGrams(totals.grams)}</span>
+            </span>
+            <span>
+              估算成本 <span className="font-medium text-foreground">{fmtCost(totals.cost_est)}</span>
+            </span>
+            <span>
+              未设单价的克数 <span className="font-medium text-foreground">{fmtGrams(totals.unpriced_grams)}</span>
+            </span>
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <caption className="sr-only">各时段消耗克数与估算成本</caption>
+              <thead>
+                <tr className="text-muted-foreground">
+                  <th scope="col" className="py-2 pr-4 font-medium">
+                    时段
+                  </th>
+                  <th scope="col" className="py-2 pr-4 font-medium">
+                    克数
+                  </th>
+                  <th scope="col" className="py-2 font-medium">
+                    估算成本
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {buckets.map((bucket) => (
+                  <tr key={bucket.key || bucket.label} className="border-t border-black/[0.06] dark:border-white/10">
+                    <th scope="row" className="py-2 pr-4 font-normal text-foreground">
+                      {bucket.label}
+                    </th>
+                    <td className="py-2 pr-4 tabular-nums">{fmtGrams(bucket.grams)}</td>
+                    <td className="py-2 tabular-nums">{fmtCost(bucket.cost_est)}</td>
+                  </tr>
+                ))}
+                {buckets.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="py-6 text-muted-foreground">
+                      暂无数据
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">近 30 天（按日）</CardTitle>
-          <CardDescription>按日聚合的消耗克数与折合成本</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <DataTable>
-            <thead className="bg-muted/50">
-              <tr className="text-left">
-                <th className="px-3 py-2">日期</th>
-                <th className="px-3 py-2">消耗(克)</th>
-                <th className="px-3 py-2">折合成本(元)</th>
-                <th className="px-3 py-2">不可计价(克)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {daily.map((r) => (
-                <tr key={r.day} className="border-t">
-                  <DataCell label="日期">{r.day}</DataCell>
-                  <DataCell label="消耗(克)">{fmtNum(r.grams_total)}</DataCell>
-                  <DataCell label="折合成本(元)">{fmtNum(r.cost_total, 2)}</DataCell>
-                  <DataCell label="不可计价(克)">{fmtNum(r.unpriced_grams)}</DataCell>
-                </tr>
-              ))}
-              {daily.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-3 py-6 text-center text-sm text-muted-foreground">
-                    暂无数据
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </DataTable>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">按月</CardTitle>
-          <CardDescription>按月聚合的消耗克数与成本估算</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <DataTable>
-            <thead className="bg-muted/50">
-              <tr className="text-left">
-                <th className="px-3 py-2">月份</th>
-                <th className="px-3 py-2">克数</th>
-                <th className="px-3 py-2">成本估算</th>
-              </tr>
-            </thead>
-            <tbody>
-              {monthly.map((r) => (
-                <tr key={r.month} className="border-t">
-                  <DataCell label="月份">{r.month}</DataCell>
-                  <DataCell label="克数">{fmtNum(r.grams)}</DataCell>
-                  <DataCell label="成本估算">{fmtNum(r.cost_est, 2)}</DataCell>
-                </tr>
-              ))}
-              {monthly.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="px-3 py-6 text-center text-sm text-muted-foreground">
-                    暂无数据
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </DataTable>
-        </CardContent>
-      </Card>
     </div>
   );
 }

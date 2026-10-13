@@ -23,6 +23,13 @@ const ENTRIES = [
     description: "按颜色码或材质查询匹配库存，排查识别和扣减问题。",
     action: "打开调试工具",
     tint: "bg-[hsl(var(--tint-orange))] text-[hsl(var(--tint-orange-ink))]"
+  },
+  {
+    href: "/settings/prices",
+    title: "品牌单价",
+    description: "成本报告按品牌的元/千克估算。",
+    action: "去设置品牌单价",
+    tint: "bg-secondary text-secondary-foreground"
   }
 ];
 
