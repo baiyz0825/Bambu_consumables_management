@@ -11,6 +11,11 @@ def _derive_fernet_key(secret: str) -> bytes:
     return base64.urlsafe_b64encode(digest)
 
 
+def encrypt_str(secret: str, plaintext: str) -> str:
+    f = Fernet(_derive_fernet_key(secret))
+    return f.encrypt(plaintext.encode("utf-8")).decode("utf-8")
+
+
 def decrypt_str(secret: str, ciphertext: str) -> str:
     f = Fernet(_derive_fernet_key(secret))
     try:

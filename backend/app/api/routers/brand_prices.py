@@ -60,7 +60,7 @@ async def upsert_brand_price(
 
 
 @router.delete("/{brand}", status_code=204)
-async def delete_brand_price(brand: str, db: AsyncSession = Depends(get_db)) -> None:
+async def delete_brand_price(brand: str, db: AsyncSession = Depends(get_db)):
     brand = _brand_or_400(brand)
     row = await db.get(BrandPrice, brand)
     if row is None:
