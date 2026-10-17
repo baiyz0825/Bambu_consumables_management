@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+
+from plate_merger.errors import MissingAnchorError
 from plate_merger.models import StartEndPolicy
 from plate_merger.splitter import contains_swap_code, should_drop, trim_epilogue, trim_executable_tail
 
@@ -106,10 +109,19 @@ def test_trim_tail_full_only_drops_power_off() -> None:
     assert "M18" not in result
 
 
-def test_trim_tail_without_anchor_is_unchanged() -> None:
+def test_trim_tail_without_anchor_raises() -> None:
+    """找不到结束序列属输入异常，必须报错而不是静默不裁剪。"""
     body = "G1 X10\nG1 Y20\n"
 
-    assert trim_executable_tail(body, StartEndPolicy.SLIM) == body
+    with pytest.raises(MissingAnchorError):
+        trim_executable_tail(body, StartEndPolicy.SLIM)
+
+
+def test_trim_tail_full_without_anchor_is_unchanged() -> None:
+    """FULL 档没有裁剪需求，无锚点时原样返回。"""
+    body = "G1 X10\nG1 Y20\n"
+
+    assert trim_executable_tail(body, StartEndPolicy.FULL) == body
 
 
 def test_trim_tail_falls_back_to_hotend_off_anchor() -> None:

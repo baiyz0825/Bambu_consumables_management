@@ -199,9 +199,8 @@ class MergeOptions:
     swap_params: SwapParams = field(default_factory=SwapParams)
     #: 中间盘 start/end 处理策略
     start_end_policy: StartEndPolicy = StartEndPolicy.SLIM
-    #: 是否把 md5 转为大写（Bambu 原生为大写）
-    md5_upper: bool = True
-    #: 是否按 OPC 规范打包（Content_Types 首位且 STORED）
+    #: 是否按 OPC 规范打包（Content_Types 首位且 STORED）。
+    #: 注意：md5 固定输出大写（Bambu 原生格式），不做成配置项以免误用。
     opc_pack: bool = True
     #: 换盘码前是否插入热床降温（None 表示不降温）
     hotbed_cooldown_c: int | None = None

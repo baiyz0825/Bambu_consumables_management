@@ -65,6 +65,10 @@ def build_swap_block(options: MergeOptions, *, newline: str = "\n") -> str:
     if options.hotbed_cooldown_c is not None and options.hotbed_cooldown_c >= 0:
         parts.append(f"M190 S{options.hotbed_cooldown_c} ; 热床降温")
 
+    # 换盘码假定绝对坐标、且所有运动已结束；被裁掉的尾部不再保证这两点
+    parts.append("M400 ; 等待运动完成")
+    parts.append("G90 ; 强制绝对坐标")
+
     swap_code = render_swap_code(
         options.swap_params,
         newline=newline,
@@ -111,9 +115,12 @@ def merge_segments(
         # 中间盘必须裁掉 EXECUTABLE 段尾部的结束序列（关加热 / 抬 Z / 结束音乐 / M18 断电），
         # 否则换盘码会在电机断电后执行
         body = segment.blocks.executable_body
-        if not is_last:
-            body = trim_executable_tail(body, options.start_end_policy)
-        executable_text = f"{body}{segment.blocks.executable_end_marker}"
+        if is_last:
+            # 只有最后一盘保留 END 标记：全文只能有一个 EXECUTABLE_BLOCK_END，
+            # 否则后续任何按块解析（包括对合盘产物再次合盘）都会在第一个 END 处截断
+            executable_text = f"{body}{segment.blocks.executable_end_marker}"
+        else:
+            executable_text = trim_executable_tail(body, options.start_end_policy)
         chunks.append(_ensure_trailing_newline(remap_gcode(executable_text, segment.mapping), newline))
 
         if not is_last:

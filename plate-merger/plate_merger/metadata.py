@@ -26,6 +26,7 @@ from collections.abc import Mapping, Sequence
 from xml.etree import ElementTree
 
 from .errors import MetadataError
+from .filament import GlobalFilament
 from .models import FilamentRef
 
 #: 合并后固定使用的 G-code 成员名
@@ -33,6 +34,13 @@ MERGED_GCODE_MEMBER = "Metadata/plate_1.gcode"
 
 #: 指向「第 N 盘」的资源引用，需要统一改成第 1 盘
 _PLATE_ASSET_PATTERN = re.compile(r"((?:plate_no_light_|plate_small_|plate_|top_|pick_))(\d+)(\.[A-Za-z0-9]+)$")
+
+#: 与盘号绑定的资源文件名（不含目录），用于合盘后清理第 2 盘及以后的资源。
+#: 单一来源：流水线清理与元数据重写必须用同一套命名规则，否则会漏删或误改。
+MULTI_PLATE_ASSET_PATTERN = re.compile(
+    r"^(?:plate_(\d+)\.(?:gcode|gcode\.md5|png|json)|plate_no_light_(\d+)\.png|top_(\d+)\.png|pick_(\d+)\.png)$",
+    re.IGNORECASE,
+)
 
 _XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>'
 
@@ -99,9 +107,13 @@ def rewrite_slice_info(
     *,
     prediction_s: int | None,
     weight_g: float | None,
-    filaments: Sequence[FilamentRef],
+    filaments: Sequence[GlobalFilament],
 ) -> str:
     """合并 ``slice_info.config``：单盘 + 合计时长重量 + 全局耗材清单。
+
+    注意 ``<filament id>`` 必须使用**全局槽位**（``GlobalFilament.slot + 1``），
+    不能用原始 ``FilamentRef.slot`` —— 后者是盘内局部编号，多盘单色场景下
+    会产生多条重复 ``id="1"``，与 G-code 的 ``M620 S0/S1/S2`` 完全对不上。
 
     :raises MetadataError: XML 非法或缺少 ``<plate>``。
     """
@@ -120,19 +132,19 @@ def rewrite_slice_info(
     for existing in plate.findall("filament"):
         plate.remove(existing)
 
-    for ref in filaments:
+    for item in filaments:
         element = ElementTree.SubElement(plate, "filament")
-        element.set("id", str(ref.slot + 1))
-        if ref.tray_info_idx:
-            element.set("tray_info_idx", ref.tray_info_idx)
-        if ref.type:
-            element.set("type", ref.type)
-        if ref.color:
-            element.set("color", ref.color)
-        if ref.used_m is not None:
-            element.set("used_m", f"{ref.used_m:.2f}")
-        if ref.used_g is not None:
-            element.set("used_g", f"{ref.used_g:.2f}")
+        element.set("id", str(item.slot + 1))
+        if item.ref.tray_info_idx:
+            element.set("tray_info_idx", item.ref.tray_info_idx)
+        if item.ref.type:
+            element.set("type", item.ref.type)
+        if item.ref.color:
+            element.set("color", item.ref.color)
+        if item.total_used_m:
+            element.set("used_m", f"{item.total_used_m:.2f}")
+        if item.total_used_g:
+            element.set("used_g", f"{item.total_used_g:.2f}")
 
     return _serialize_xml(root)
 

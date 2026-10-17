@@ -60,11 +60,17 @@ class VerificationReport:
         raise ValidationError("合盘输出未通过校验", detail={"issues": summary})
 
 
-def verify_package(package: ThreeMfPackage, *, expected_swap_count: int | None = None) -> VerificationReport:
+def verify_package(
+    package: ThreeMfPackage,
+    *,
+    expected_swap_count: int | None = None,
+    swap_flag: str = ";start change plate",
+) -> VerificationReport:
     """校验一个已打包的 3MF。
 
     :param package: 待校验的包。
     :param expected_swap_count: 期望的换盘次数（盘数 - 1）；``None`` 表示不检查。
+    :param swap_flag: 换盘起始标记，必须与渲染时使用的一致（可通过配置自定义）。
     """
     checks: list[CheckResult] = []
 
@@ -151,7 +157,7 @@ def verify_package(package: ThreeMfPackage, *, expected_swap_count: int | None =
         )
 
         if expected_swap_count is not None:
-            swaps = count_occurrences(gcode_text, ";start change plate")
+            swaps = count_occurrences(gcode_text, swap_flag)
             checks.append(
                 CheckResult(
                     name="swap_count",

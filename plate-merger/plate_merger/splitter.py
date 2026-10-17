@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 
+from .errors import MissingAnchorError
 from .models import StartEndPolicy
 
 #: 无论哪一档都剥离的指令：关闭加热、风扇与电机，或执行归位
@@ -84,6 +85,8 @@ def contains_swap_code(text: str, *flags: str) -> bool:
 _UNLOAD_ANCHOR = re.compile(r"^M62[01]\s+S255")
 _HOTEND_OFF_ANCHOR = re.compile(r"^M104\s+S0\b")
 _POWER_OFF = re.compile(r"^M18\b")
+#: 结束音乐标记（与 ``;=====start printer sound`` 区分）
+_FINISH_SOUND = re.compile(r";=====printer finish\s+sound")
 
 
 def _find_end_anchor(lines: list[str]) -> int | None:
@@ -112,29 +115,62 @@ def _find_end_anchor(lines: list[str]) -> int | None:
     return None
 
 
+def _find_finish_sound(lines: list[str]) -> int | None:
+    """从尾部向前找结束音乐标记所在行索引。"""
+    for index in range(len(lines) - 1, -1, -1):
+        if _FINISH_SOUND.search(lines[index]):
+            return index
+    return None
+
+
 def trim_executable_tail(body: str, policy: StartEndPolicy) -> str:
     """裁剪 ``EXECUTABLE`` 正文尾部的结束序列（中间盘专用）。
 
-    这是合盘最关键的一步：Bambu 的关加热、抬 Z、结束音乐与 ``M18`` 断电
-    **全部位于 EXECUTABLE 段内部**，若不裁剪，换盘码会在电机断电后执行。
+    这是合盘最关键的一步：Bambu 的关加热、**抬 Z**、结束音乐与 ``M18`` 断电
+    **全部位于 EXECUTABLE 段内部**。
 
-    - ``FULL``：只剥离 ``M18`` 断电指令，保留降温、退料与提示音（最保守）；
-    - ``SLIM``：截断到退料行（含），保留退料，避免喷嘴带料换盘；
-    - ``TURBO``：截断到退料行之前，连退料一起省掉。
+    裁剪点必须保留「抬 Z + 移到后部」—— 它把喷嘴抬离零件并让出换盘空间；
+    若只截到退料行，喷嘴会停在零件顶面，随后换盘码的 Y 全行程移动会撞件。
+
+    三档行为：
+
+    - ``FULL``：只剥离 ``M18`` 断电（且只作用于结束序列区，避免误伤启动段），
+      保留降温、退料、抬 Z 与提示音；
+    - ``SLIM``：截断到**结束音乐之前**，保留退料、关喷嘴、抬 Z 与移位；
+    - ``TURBO``：同 ``SLIM``，但额外去掉退料行。
 
     :param body: 不含 ``EXECUTABLE_BLOCK_END`` 标记的正文。
     :return: 裁剪后的正文。
+    :raises MissingAnchorError: 找不到任何结束序列锚点，无法安全裁剪。
     """
     if not body:
         return body
 
     lines = body.splitlines(keepends=True)
-    anchor = _find_end_anchor(lines)
-    if anchor is None:
-        return body
 
     if policy is StartEndPolicy.FULL:
-        return "".join(line for line in lines if not _POWER_OFF.match(line.strip()))
+        anchor = _find_end_anchor(lines)
+        start = 0 if anchor is None else anchor
+        kept = [
+            line
+            for index, line in enumerate(lines)
+            if not (index >= start and _POWER_OFF.match(line.strip()))
+        ]
+        return "".join(kept)
+
+    music = _find_finish_sound(lines)
+    if music is not None:
+        kept = lines[:music]
+    else:
+        anchor = _find_end_anchor(lines)
+        if anchor is None:
+            raise MissingAnchorError(
+                "未找到结束序列锚点，无法安全裁剪",
+                detail={"policy": policy.value, "lines": len(lines)},
+            )
+        kept = lines[: anchor + 1]
+
     if policy is StartEndPolicy.TURBO:
-        return "".join(lines[:anchor])
-    return "".join(lines[: anchor + 1])
+        kept = [line for line in kept if not _UNLOAD_ANCHOR.match(line.strip())]
+
+    return "".join(kept)

@@ -45,6 +45,7 @@ class GlobalFilament:
     ref: FilamentRef
     plate_indexes: tuple[int, ...] = ()
     total_used_g: float = 0.0
+    total_used_m: float = 0.0
 
     @property
     def color(self) -> str:
@@ -100,6 +101,7 @@ def build_plan(plates: Sequence[PlateInfo], *, ams_slots: int = AMS_LITE_SLOTS) 
     identity_to_slot: dict[tuple[str, str, str], int] = {}
     plate_of_slot: dict[int, list[int]] = {}
     usage_of_slot: dict[int, float] = {}
+    length_of_slot: dict[int, float] = {}
     mappings: list[PlateMapping] = []
 
     for plate in plates:
@@ -122,11 +124,13 @@ def build_plan(plates: Sequence[PlateInfo], *, ams_slots: int = AMS_LITE_SLOTS) 
                 order.append(ref)
                 plate_of_slot[global_slot] = []
                 usage_of_slot[global_slot] = 0.0
+                length_of_slot[global_slot] = 0.0
 
             local_map[ref.slot] = global_slot
             if plate.index not in plate_of_slot[global_slot]:
                 plate_of_slot[global_slot].append(plate.index)
             usage_of_slot[global_slot] += ref.used_g or 0.0
+            length_of_slot[global_slot] += ref.used_m or 0.0
 
         mappings.append(PlateMapping(plate_index=plate.index, local_to_global=local_map))
 
@@ -136,6 +140,7 @@ def build_plan(plates: Sequence[PlateInfo], *, ams_slots: int = AMS_LITE_SLOTS) 
             ref=ref,
             plate_indexes=tuple(plate_of_slot.get(slot, [])),
             total_used_g=round(usage_of_slot.get(slot, 0.0), 3),
+            total_used_m=round(length_of_slot.get(slot, 0.0), 3),
         )
         for slot, ref in enumerate(order)
     )
