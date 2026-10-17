@@ -35,6 +35,7 @@ from .models import (
     StartEndPolicy,
     SwapParams,
 )
+from .presets import BALANCED, BUILTIN_PRESETS, CONSERVATIVE, FAST, get_preset, list_presets
 from .sliceinfo import (
     PlateJson,
     SliceHeader,
@@ -45,6 +46,7 @@ from .sliceinfo import (
     parse_project_settings,
     parse_slice_info,
 )
+from .swapcode import estimate_duration_s, render_swap_code, validate_params
 from .utils import normalize_color, to_float, to_int
 
 __version__ = "0.1.0"
@@ -79,17 +81,27 @@ __all__ = [
     "parse_plate_json",
     "parse_filament_sequence",
     "parse_project_settings",
+    # 换盘码
+    "SwapParams",
+    "ApproachMode",
+    "CONSERVATIVE",
+    "BALANCED",
+    "FAST",
+    "BUILTIN_PRESETS",
+    "get_preset",
+    "list_presets",
+    "render_swap_code",
+    "validate_params",
+    "estimate_duration_s",
     # 工具
     "normalize_color",
     "to_int",
     "to_float",
     # 领域模型
-    "ApproachMode",
     "StartEndPolicy",
     "FilamentRef",
     "PlateInfo",
     "InputPlate",
-    "SwapParams",
     "MergeOptions",
     "MergeWarning",
     "MergeResult",
