@@ -336,6 +336,74 @@ def _normalize_filament_items(print_obj: dict) -> list[dict]:
     return out
 
 
+def _hms_to_ecode(attr: object, code: object) -> str | None:
+    """把 MQTT 里的 ``{attr, code}`` 整数拼成 8 位 ecode（attr 在前，各 4 位 hex）。
+
+    例：``attr=1795(0x0703)`` + ``code=32786(0x8012)`` → ``"07038012"``，
+    该字符串即 Bambu Studio 的 ``hms_*.json`` 码表主键。
+    """
+    a = _to_int(attr)
+    c = _to_int(code)
+    if a is None or c is None:
+        return None
+    return f"{a & 0xFFFF:04X}{c & 0xFFFF:04X}"
+
+
+def _normalize_hms(print_obj: dict) -> list[dict]:
+    """归一化 HMS 故障列表，附带 ecode 与模块号。"""
+    raw = print_obj.get("hms")
+    if not isinstance(raw, list):
+        return []
+
+    out: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        ecode = _hms_to_ecode(item.get("attr"), item.get("code"))
+        if ecode is None:
+            continue
+        out.append(
+            {
+                "attr": _to_int(item.get("attr")),
+                "code": _to_int(item.get("code")),
+                "ecode": ecode,
+                # 前两位为模块号（07=AMS、05=主板、03=运动控制…），用于 3D 故障部件定位
+                "module": ecode[:2],
+                "action": _to_int(item.get("action")),
+                "timestamp": _to_int(item.get("timestamp")),
+            }
+        )
+
+    # 排序保证签名稳定：固件上报顺序可能抖动
+    out.sort(key=lambda x: x["ecode"])
+    return out
+
+
+def _normalize_lights(print_obj: dict) -> dict[str, str]:
+    """把 ``lights_report`` 列表压成 ``{node: mode}``。"""
+    raw = print_obj.get("lights_report")
+    if not isinstance(raw, list):
+        return {}
+
+    lights: dict[str, str] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        node = item.get("node")
+        mode = item.get("mode")
+        if isinstance(node, str) and isinstance(mode, str):
+            lights[node] = mode
+    return lights
+
+
+def _hms_signature(normalized_data: dict) -> str | None:
+    """故障集合的稳定签名；无故障时返回 ``None``（便于区分「清空」）。"""
+    hms = normalized_data.get("hms")
+    if not isinstance(hms, list) or not hms:
+        return None
+    return _sha256_hex(orjson.dumps([h["ecode"] for h in hms], option=orjson.OPT_SORT_KEYS))
+
+
 def _normalize_event_from_payload(payload: dict) -> dict | None:
     # 只关心 print 字段（按 docs/局域网读取方法.md 的描述）
     p = payload.get("print")
@@ -386,22 +454,68 @@ def _normalize_event_from_payload(payload: dict) -> dict | None:
 
     filament_items = _normalize_filament_items(p)
 
+    # 换料过程：tray_tar=目标槽、tray_pre=上次使用的槽（数字孪生换料动画用）
+    tray_tar = _to_int(ams.get("tray_tar")) if isinstance(ams, dict) else None
+    tray_pre = _to_int(ams.get("tray_pre")) if isinstance(ams, dict) else None
+
     return {
+        # —— 基础状态 ——
         "gcode_state": gcode_state,
         "progress": progress_int,
-        "tray_now": tray_now,
-        "ams_trays": tray_list,
-        "filament": filament_items,
         "mc_remaining_time": p.get("mc_remaining_time"),
         "gcode_start_time": p.get("gcode_start_time"),
         "gcode_file": p.get("gcode_file"),
         "task_id": p.get("task_id") or p.get("job_id") or p.get("subtask_id"),
         "subtask_id": p.get("subtask_id"),
         "subtask_name": p.get("subtask_name"),
+        # —— 温度（孪生：喷嘴/热床/腔体颜色渐变与数值标签）——
+        "nozzle_temper": _to_float(p.get("nozzle_temper")),
+        "nozzle_target_temper": _to_float(p.get("nozzle_target_temper")),
+        "bed_temper": _to_float(p.get("bed_temper")),
+        "bed_target_temper": _to_float(p.get("bed_target_temper")),
+        "chamber_temper": _to_float(p.get("chamber_temper")),
+        # —— 层 / 阶段（孪生：Z 轴高度与动作动画）——
+        "layer_num": _to_int(p.get("layer_num")),
+        "total_layer_num": _to_int(p.get("total_layer_num")),
+        "mc_print_stage": _to_int(p.get("mc_print_stage")),
+        "mc_print_sub_stage": _to_int(p.get("mc_print_sub_stage")),
+        # —— 风扇 / 灯 / 速度（孪生：扇叶转速、腔灯发光、速度档）——
+        "cooling_fan_speed": _to_int(p.get("cooling_fan_speed")),
+        "big_fan1_speed": _to_int(p.get("big_fan1_speed")),
+        "big_fan2_speed": _to_int(p.get("big_fan2_speed")),
+        "heatbreak_fan_speed": _to_int(p.get("heatbreak_fan_speed")),
+        "lights": _normalize_lights(p),
+        "spd_lvl": _to_int(p.get("spd_lvl")),
+        "spd_mag": _to_int(p.get("spd_mag")),
+        # —— 故障（孪生：错误弹窗 + 部件红闪）——
+        "hms": _normalize_hms(p),
+        "print_error": _to_int(p.get("print_error")),
+        "fail_reason": p.get("fail_reason") if isinstance(p.get("fail_reason"), str) else None,
+        # —— 归零标志 ——
+        "home_flag": _to_int(p.get("home_flag")),
+        # —— AMS（保留原有结构，补充换料过程字段）——
+        "tray_now": tray_now,
+        "tray_pre": tray_pre,
+        "tray_tar": tray_tar,
+        "ams_trays": tray_list,
+        "filament": filament_items,
     }
 
 
-def _derive_event_type(gcode_state: str | None, last_state: str | None) -> str:
+def _derive_event_type(
+    gcode_state: str | None,
+    last_state: str | None,
+    hms_sig: str | None = None,
+    last_hms_sig: str | None = None,
+) -> str:
+    """推导事件类型。
+
+    HMS 故障优先于状态翻转：故障出现时 ``gcode_state`` 可能仍是 RUNNING，
+    只靠状态机永远发现不了——而 HMS 才是数字孪生弹窗与部件定位的真正数据源。
+    """
+    if hms_sig != last_hms_sig:
+        return "HmsError" if hms_sig else "HmsCleared"
+
     # MVP：用 gcode_state 变更推导生命周期
     if last_state != gcode_state:
         running_states = {"RUNNING"}
@@ -643,8 +757,10 @@ def _selftest_ams_dedup() -> None:
 
 
 async def ingest_loop(ingest_q: "asyncio.Queue[IngestItem]") -> None:
-    # (last_gcode_state, last_progress, last_ams_sig, last_fil_sig, last_est_sig)
-    state_by_printer: dict[uuid.UUID, tuple[str | None, int | None, str | None, str | None, str | None]] = {}
+    # (last_gcode_state, last_progress, last_ams_sig, last_fil_sig, last_est_sig, last_hms_sig)
+    state_by_printer: dict[
+        uuid.UUID, tuple[str | None, int | None, str | None, str | None, str | None, str | None]
+    ] = {}
     # Small cache to avoid decrypting the LAN code for every message.
     # printer_id -> (loaded_at_ts, printer_ip, access_code_plain)
     printer_info_cache: dict[uuid.UUID, tuple[float, str, str]] = {}
@@ -715,11 +831,12 @@ async def ingest_loop(ingest_q: "asyncio.Queue[IngestItem]") -> None:
                 ams_sig = _ams_signature(normalized_data)
                 fil_sig = _filament_signature(normalized_data)
                 est_sig = _estimate_signature(normalized_data)
+                hms_sig = _hms_signature(normalized_data)
 
-                last_state, last_progress, last_ams_sig, last_fil_sig, last_est_sig = state_by_printer.get(
-                    item.printer_id, (None, None, None, None, None)
+                last_state, last_progress, last_ams_sig, last_fil_sig, last_est_sig, last_hms_sig = (
+                    state_by_printer.get(item.printer_id, (None, None, None, None, None, None))
                 )
-                event_type = _derive_event_type(gcode_state, last_state)
+                event_type = _derive_event_type(gcode_state, last_state, hms_sig, last_hms_sig)
 
                 # 降噪：只有在 *进度不变* 且 *AMS 也不变* 时才跳过写入 normalized_events（raw_events 仍保留）。
                 # 这样可以保证“换料/空槽变化（但进度不动）”也会生成新事件，驱动前端更新。
@@ -733,7 +850,14 @@ async def ingest_loop(ingest_q: "asyncio.Queue[IngestItem]") -> None:
                     await session.commit()
                     continue
 
-                state_by_printer[item.printer_id] = (gcode_state, progress_int, ams_sig, fil_sig, est_sig)
+                state_by_printer[item.printer_id] = (
+                    gcode_state,
+                    progress_int,
+                    ams_sig,
+                    fil_sig,
+                    est_sig,
+                    hms_sig,
+                )
 
                 ev = {
                     "event_id": _event_id_for_payload(item.printer_id, payload_hash),
