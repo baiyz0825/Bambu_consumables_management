@@ -104,7 +104,7 @@ function ledText(mode) {
  * 上半部分是 3D 占位卡（后续替换数据面板区域时只动这里），
  * 下半部分是归一化状态的可读视图。所有字段都可能为 null，一律兜底为 "-"。
  */
-export function DetailRealtimePanel({ liveState, eventMeta }) {
+export function DetailRealtimePanel({ liveState, eventMeta, layerIndex = null, layerSource = null }) {
   const state = liveState && typeof liveState === "object" ? liveState : null;
   const hasData = Boolean(state);
 
@@ -134,7 +134,12 @@ export function DetailRealtimePanel({ liveState, eventMeta }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <TwinView state={state} />
+          <TwinView state={state} layerIndex={layerIndex} />
+          <p className="mt-2 text-xs text-muted-foreground">
+            {layerIndex
+              ? `喷嘴位置来自 G-code 层索引（${layerIndex.count} 层${layerSource ? ` · ${layerSource}` : ""}），层内为匀速插值。`
+              : "未匹配到合盘产物，喷嘴位置为估算摆动。合盘并下发后会自动使用层索引。"}
+          </p>
         </CardContent>
       </Card>
 

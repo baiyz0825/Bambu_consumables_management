@@ -55,6 +55,7 @@ from app.plate_merger import (
     render_swap_code,
     validate_params,
 )
+from app.plate_merger.layers import LayerIndex
 from app.plate_merger.models import PlateInfo
 from app.plate_merger.planner import PlateJob
 
@@ -246,14 +247,108 @@ def _artifact_to_dict(artifact: MergedArtifact) -> dict:
 
 
 @router.get("/artifacts")
-async def list_artifacts(limit: int = 100, db: AsyncSession = Depends(get_db)) -> list[dict]:
-    """合盘产物记录（含耗材清单与下发状态），按创建时间倒序。"""
-    rows = (
-        await db.execute(
-            select(MergedArtifact).order_by(MergedArtifact.created_at.desc()).limit(limit)
-        )
-    ).scalars().all()
+async def list_artifacts(
+    limit: int = 100,
+    printer_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """合盘产物记录（含耗材清单与下发状态），按创建时间倒序。
+
+    ``printer_id`` 用于设备详情页自动匹配「当前这台机器在打哪个产物」。
+    """
+    stmt = select(MergedArtifact)
+    if printer_id:
+        try:
+            stmt = stmt.where(MergedArtifact.printer_id == UUID(printer_id))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="printer_id 格式错误") from exc
+    stmt = stmt.order_by(MergedArtifact.created_at.desc()).limit(limit)
+
+    rows = (await db.execute(stmt)).scalars().all()
     return [_artifact_to_dict(item) for item in rows]
+
+
+#: 层索引缓存：合盘产物不可变，按文件名缓存（单份约 0.5MB）
+_LAYER_CACHE: dict[str, dict] = {}
+_LAYER_CACHE_LIMIT = 3
+
+
+def _build_layer_payload(path: Path) -> dict:
+    """解析产物里的 G-code 并生成层索引（阻塞，调用方负责放线程池）。"""
+    with ThreeMfPackage.open(path) as package:
+        members = sorted(
+            name
+            for name in package.names
+            if name.startswith("Metadata/plate_") and name.endswith(".gcode")
+        )
+        if not members:
+            raise ValueError("产物中未找到 G-code")
+        gcode = package.read_text_lossy(members[0])
+
+    index = LayerIndex.build(gcode)
+
+    # 换盘段含推盘 / 擦嘴的大位移（Y 可达 264+），会把某层 bbox 撑到床外。
+    # 这类层沿用上一层的 bbox：既保证层号与 layer_num 对齐，又不让喷嘴飞出模型。
+    lo, hi = -64.0, 320.0
+    rows: list[list[float]] = []
+    previous: tuple[float, float, float, float] | None = None
+    fallback = 0
+    for item in index.layers:
+        box = (item.x_min, item.x_max, item.y_min, item.y_max)
+        if all(lo <= value <= hi for value in box):
+            previous = box
+        else:
+            fallback += 1
+            box = previous or (0.0, 0.0, 0.0, 0.0)
+        rows.append([round(item.z_mm, 3), *(round(value, 2) for value in box)])
+
+    # 顶层 bbox 用修正后的层重算，避免把越界层的 1316 透出去
+    bbox = (
+        (
+            min(row[1] for row in rows),
+            max(row[2] for row in rows),
+            min(row[3] for row in rows),
+            max(row[4] for row in rows),
+        )
+        if rows
+        else None
+    )
+    return {
+        "count": len(rows),
+        "bbox": list(bbox) if bbox else None,
+        "out_of_bounds": fallback,
+        "layers": rows,
+    }
+
+
+@router.get("/artifacts/{artifact_id}/layers")
+async def get_artifact_layers(artifact_id: UUID, db: AsyncSession = Depends(get_db)) -> dict:
+    """返回产物的逐层 Z 与 XY 包围盒，供数字孪生推算喷嘴位置。
+
+    每行固定为 ``[z, x_min, x_max, y_min, y_max]``。用数组而非对象，
+    是为了把 1 万层的体积压到约 500KB（对象格式会翻倍）。
+    """
+    artifact = await db.get(MergedArtifact, artifact_id)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail="产物不存在")
+
+    cached = _LAYER_CACHE.get(artifact.file_name)
+    if cached is not None:
+        return {"file_name": artifact.file_name, **cached}
+
+    path = _OUTPUT_DIR / artifact.file_name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="产物文件已不存在")
+
+    try:
+        payload = await asyncio.to_thread(_build_layer_payload, path)
+    except Exception as exc:  # noqa: BLE001 - 解析失败原因需要原样透出
+        raise HTTPException(status_code=422, detail=f"解析 G-code 失败：{exc}") from exc
+
+    if len(_LAYER_CACHE) >= _LAYER_CACHE_LIMIT:
+        _LAYER_CACHE.pop(next(iter(_LAYER_CACHE)))
+    _LAYER_CACHE[artifact.file_name] = payload
+    return {"file_name": artifact.file_name, **payload}
 
 
 @router.get("/outputs")

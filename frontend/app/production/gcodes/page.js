@@ -168,8 +168,9 @@ export default function Page() {
     setDispatchTarget(item);
     setForm({
       ...EMPTY_FORM,
-      // 产物库只拿到文件名，这里按后端默认产物目录预填，允许用户改成真实路径
-      path: `/tmp/plate-merger/${item.name}`
+      // 优先用后端登记的真实路径（产物目录随系统而异，macOS 是 /var/folders/…）；
+      // 没有登记记录时才退回按约定拼接，允许用户手改
+      path: item.artifact?.file_path || `/tmp/plate-merger/${item.name}`
     });
     setErrors({});
     setDispatchNote(null);

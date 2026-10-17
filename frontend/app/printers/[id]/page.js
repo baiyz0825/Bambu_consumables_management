@@ -19,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { DetailControlPanel } from "../../../components/printer/detail-control-panel";
 import { DetailHmsAlert } from "../../../components/printer/detail-hms-alert";
 import { DetailRealtimePanel } from "../../../components/printer/detail-realtime-panel";
+import { getArtifactLayers, listArtifacts } from "../../../lib/plate-merger-api";
 
 /**
  * 打印机设备详情页。
@@ -98,6 +99,40 @@ export default function Page() {
   const [printerError, setPrinterError] = useState(null);
 
   const [liveState, setLiveState] = useState(null);
+
+  // 层索引：用于把 layer_num 反推成喷嘴 XYZ（协议不回传实时坐标）
+  const [layerIndex, setLayerIndex] = useState(null);
+  const [layerSource, setLayerSource] = useState(null);
+
+  useEffect(() => {
+    if (!printerId) return undefined;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const artifacts = await listArtifacts({ printerId, limit: 5 });
+        if (cancelled || !Array.isArray(artifacts)) return;
+
+        // 优先正在打印/刚下发的产物，其次任意存在的产物
+        const candidate =
+          artifacts.find(
+            (item) => item.exists && (item.status === "printing" || item.status === "dispatched")
+          ) || artifacts.find((item) => item.exists);
+        if (!candidate) return;
+
+        const payload = await getArtifactLayers(candidate.id);
+        if (cancelled || !payload) return;
+        setLayerIndex(payload);
+        setLayerSource(candidate.file_name);
+      } catch {
+        // 层索引是增强项：拿不到就回退到摆动近似，不打扰用户
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [printerId]);
   const [eventMeta, setEventMeta] = useState(null);
 
   const [connection, setConnection] = useState("connecting");
@@ -417,7 +452,12 @@ export default function Page() {
 
         {tab === "realtime" ? (
           <div role="tabpanel" id="panel-realtime" aria-labelledby="tab-realtime">
-            <DetailRealtimePanel liveState={liveState} eventMeta={eventMeta} />
+            <DetailRealtimePanel
+              liveState={liveState}
+              eventMeta={eventMeta}
+              layerIndex={layerIndex}
+              layerSource={layerSource}
+            />
           </div>
         ) : (
           <div role="tabpanel" id="panel-control" aria-labelledby="tab-control">

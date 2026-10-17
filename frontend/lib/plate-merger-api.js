@@ -105,6 +105,26 @@ export function downloadOutput(name) {
   a.remove();
 }
 
+/**
+ * 合盘产物记录（可按打印机过滤）。
+ * @param {{printerId?: string|null, limit?: number}} options
+ */
+export function listArtifacts({ printerId = null, limit = 20 } = {}) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (printerId) query.set("printer_id", printerId);
+  return fetchJson(`${PM}/artifacts?${query.toString()}`);
+}
+
+/**
+ * 产物的逐层索引，供数字孪生推算喷嘴位置。
+ * 返回 `{ count, bbox, out_of_bounds, layers: [[z, xMin, xMax, yMin, yMax], ...] }`
+ */
+export function getArtifactLayers(artifactId) {
+  return fetchJson(`${PM}/artifacts/${encodeURIComponent(artifactId)}/layers`, {
+    timeoutMs: 60000
+  });
+}
+
 /** 版本指纹探测 */
 export function probe(path) {
   return fetchJson(`${PM}/probe`, {

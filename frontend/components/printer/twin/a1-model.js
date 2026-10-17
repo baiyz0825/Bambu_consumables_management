@@ -27,6 +27,8 @@ const COLUMN = { w: 96, h: 430, d: 74 };
 const BEAM = { w: 384, h: 42, d: 46 };
 const TOOL = { w: 76, h: 96, d: 62 };
 const COIL = { radius: 92, thickness: 44 };
+//: Bambu 的床坐标原点在床角（0..256），模型以床中心为原点，需要平移
+const BED_CENTER = 128;
 
 const COLORS = {
   frame: "#2b2f36",
@@ -67,7 +69,7 @@ function damp(current, target, lambda, dt) {
   return THREE.MathUtils.damp(current, target, lambda, dt);
 }
 
-export function A1Model({ state }) {
+export function A1Model({ state, layerIndex = null }) {
   const gantryRef = useRef(null);
   const toolRef = useRef(null);
   const bedRef = useRef(null);
@@ -93,6 +95,9 @@ export function A1Model({ state }) {
   const trayNowNum = num(state?.tray_now);
   const activeTray = trayNowNum !== null && trayNowNum >= 0 && trayNowNum < 4 ? trayNowNum : 0;
 
+  // 层索引：rows[n] = [z, xMin, xMax, yMin, yMax]
+  const layerRows = layerIndex?.layers ?? null;
+
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05);
     const t = performance.now() / 1000;
@@ -106,11 +111,30 @@ export function A1Model({ state }) {
     const clamped = Math.max(0, Math.min(1, ratio));
 
     // —— 目标位置 ——
-    targets.toolY = 10 + clamped * (PRINT_VOLUME - 30);
-    // 暂无真实 X 坐标（协议不回传），打印中用摆动近似"喷头在走线"
-    targets.toolX = running ? Math.sin(t * 1.15) * 82 : 0;
-    targets.bedZ = running ? Math.sin(t * 0.72) * 54 : 0;
-    targets.partH = clamped * 200;
+    if (layerRows && layerRows.length > 0 && layer !== null) {
+      // 有层索引：用真实 XYZ（协议本身不回传坐标，这是从 G-code 反推的）
+      const index = Math.max(1, Math.min(layerRows.length, Math.round(layer)));
+      const row = layerRows[index - 1];
+      const xMin = row[1];
+      const xMax = row[2];
+      const yMin = row[3];
+      const yMax = row[4];
+      // 层内没有逐条轨迹，按时间沿 bbox 对角线匀速插值（刻意取舍）
+      const fraction = running ? (t * 0.35) % 1 : 0.5;
+      const printX = xMin + (xMax - xMin) * fraction;
+      const printY = yMin + (yMax - yMin) * fraction;
+
+      targets.toolX = printX - BED_CENTER;
+      targets.bedZ = -(printY - BED_CENTER);
+      targets.toolY = row[0] + 6;
+      targets.partH = row[0];
+    } else {
+      // 无层索引：退回摆动近似
+      targets.toolY = 10 + clamped * (PRINT_VOLUME - 30);
+      targets.toolX = running ? Math.sin(t * 1.15) * 82 : 0;
+      targets.bedZ = running ? Math.sin(t * 0.72) * 54 : 0;
+      targets.partH = clamped * 200;
+    }
 
     // —— 阻尼跟随 ——
     if (gantryRef.current) {

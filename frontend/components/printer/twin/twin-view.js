@@ -12,7 +12,7 @@ import { OrbitControls } from "@react-three/drei";
 
 import { A1Model } from "./a1-model";
 
-export function TwinView({ state }) {
+export function TwinView({ state, layerIndex = null }) {
   return (
     <div className="relative h-[420px] w-full overflow-hidden rounded-xl bg-[#0b0d12] ring-1 ring-black/10 dark:ring-white/10">
       <Canvas
@@ -23,7 +23,7 @@ export function TwinView({ state }) {
         <ambientLight intensity={0.55} />
         <directionalLight position={[380, 640, 420]} intensity={1.15} />
         <directionalLight position={[-420, 260, -380]} intensity={0.35} />
-        <A1Model state={state} />
+        <A1Model state={state} layerIndex={layerIndex} />
         <OrbitControls
           enablePan
           minDistance={320}
