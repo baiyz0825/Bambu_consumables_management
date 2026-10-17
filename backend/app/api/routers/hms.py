@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 
 router = APIRouter(prefix="/hms", tags=["hms"])
 
-_DATA_FILE = Path(__file__).resolve().parents[2] / "data" / "hms_codes.json"
+_DATA_FILE = Path(__file__).resolve().parents[2] / "resources" / "hms_codes.json"
 
 #: 单次查询上限，避免被当作全量遍历接口滥用
 _MAX_LOOKUP = 200

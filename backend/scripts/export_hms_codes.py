@@ -11,7 +11,7 @@ MQTT 上报的 ``print.hms[]`` 只有 ``{attr, code}`` 整数，需要拼成 8 �
 - Linux:   ``~/.config/BambuStudio/hms/``
 
 本脚本把 ``hms_<lang>_<device>.json`` 与 ``hms_action_<device>.json`` 合并成
-一份 ``app/data/hms_codes.json``，使容器内无需安装 Studio 也能展示故障文案。
+一份 ``app/resources/hms_codes.json``，使容器内无需安装 Studio 也能展示故障文案。
 
 用法
 ----
@@ -125,7 +125,7 @@ def main() -> int:
     parser.add_argument(
         "--out",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "app" / "data" / "hms_codes.json",
+        default=Path(__file__).resolve().parents[1] / "app" / "resources" / "hms_codes.json",
     )
     args = parser.parse_args()
 
