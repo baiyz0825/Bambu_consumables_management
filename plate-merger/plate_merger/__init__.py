@@ -15,6 +15,14 @@ from .errors import (
     UnsupportedFormatError,
     ValidationError,
 )
+from .gcode import (
+    GcodeBlocks,
+    count_occurrences,
+    detect_newline,
+    extract_header_block,
+    find_all,
+    locate_anchor,
+)
 from .io3mf import CONTENT_TYPES, ThreeMfPackage, compute_md5, write_3mf
 from .models import (
     ApproachMode,
@@ -27,6 +35,17 @@ from .models import (
     StartEndPolicy,
     SwapParams,
 )
+from .sliceinfo import (
+    PlateJson,
+    SliceHeader,
+    SliceInfo,
+    SlicePlate,
+    parse_filament_sequence,
+    parse_plate_json,
+    parse_project_settings,
+    parse_slice_info,
+)
+from .utils import normalize_color, to_float, to_int
 
 __version__ = "0.1.0"
 
@@ -44,6 +63,26 @@ __all__ = [
     "ThreeMfPackage",
     "compute_md5",
     "write_3mf",
+    # G-code 解析
+    "GcodeBlocks",
+    "count_occurrences",
+    "detect_newline",
+    "extract_header_block",
+    "find_all",
+    "locate_anchor",
+    # 元数据解析
+    "SliceHeader",
+    "SlicePlate",
+    "SliceInfo",
+    "PlateJson",
+    "parse_slice_info",
+    "parse_plate_json",
+    "parse_filament_sequence",
+    "parse_project_settings",
+    # 工具
+    "normalize_color",
+    "to_int",
+    "to_float",
     # 领域模型
     "ApproachMode",
     "StartEndPolicy",
