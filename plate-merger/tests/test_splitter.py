@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from plate_merger.models import StartEndPolicy
-from plate_merger.splitter import contains_swap_code, should_drop, trim_epilogue
+from plate_merger.splitter import contains_swap_code, should_drop, trim_epilogue, trim_executable_tail
 
 _EPILOGUE = (
     "; end of print\n"
@@ -67,3 +67,55 @@ def test_contains_swap_code_detects_both_flags() -> None:
     assert contains_swap_code(english, ";start change plate") is True
     assert contains_swap_code(chinese, ";start change plate") is False
     assert contains_swap_code(chinese, ";开始换盘", ";end change plate") is True
+
+
+# ---- EXECUTABLE 尾部裁剪（合盘最关键的一步） ----
+
+_TAIL = (
+    "G1 X10\n"
+    "M621 S255\n"
+    "M104 S0 ; turn off hotend\n"
+    "M400\n"
+    "M17 Z0.4\n"
+    "M18 X Y Z\n"
+    "M73 P100 R0\n"
+)
+
+
+def test_trim_tail_slim_keeps_unload_but_drops_shutdown() -> None:
+    result = trim_executable_tail(_TAIL, StartEndPolicy.SLIM)
+
+    assert "M621 S255" in result
+    assert "M104 S0" not in result
+    assert "M18" not in result
+    assert "M73 P100" not in result
+
+
+def test_trim_tail_turbo_drops_unload_too() -> None:
+    result = trim_executable_tail(_TAIL, StartEndPolicy.TURBO)
+
+    assert "M621 S255" not in result
+    assert "G1 X10" in result
+
+
+def test_trim_tail_full_only_drops_power_off() -> None:
+    result = trim_executable_tail(_TAIL, StartEndPolicy.FULL)
+
+    assert "M621 S255" in result
+    assert "M104 S0" in result
+    assert "M18" not in result
+
+
+def test_trim_tail_without_anchor_is_unchanged() -> None:
+    body = "G1 X10\nG1 Y20\n"
+
+    assert trim_executable_tail(body, StartEndPolicy.SLIM) == body
+
+
+def test_trim_tail_falls_back_to_hotend_off_anchor() -> None:
+    body = "G1 X10\nM104 S0\nM18 X Y Z\n"
+
+    result = trim_executable_tail(body, StartEndPolicy.SLIM)
+
+    assert "M104 S0" in result
+    assert "M18" not in result

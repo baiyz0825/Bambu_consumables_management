@@ -1,0 +1,187 @@
+"""合盘后的 3MF 元数据重写。
+
+实测结构（02.05 / 02.08 一致）：
+
+- ``Metadata/model_settings.config``：**每个 plate 一个 ``<plate>``**，
+  其中 ``gcode_file`` 才是指向实际 G-code 的入口 —— 这是合盘后最关键的改动点；
+- ``Metadata/slice_info.config``：每盘的 ``prediction`` / ``weight`` 与 ``<filament>`` 清单；
+- ``Metadata/filament_sequence.json``：每盘使用的耗材编号（1-based）；
+- ``Metadata/plate_N.json``：颜色、床型等展示信息。
+
+合并后必须让打印机「只看到一个盘」，因此：
+
+1. ``model_settings`` 只保留第一个 ``<plate>``，``gcode_file`` 指向合并后的 G-code；
+2. ``slice_info`` 只保留一个 ``<plate>``，时长与重量取合计，耗材换为全局清单；
+3. ``filament_sequence`` 只保留 ``plate_1``；
+4. 其余 plate 相关文件在打包时删除。
+
+XML 重写使用标准库 ElementTree；写出时补回 XML 声明，保持与 Bambu 原生文件一致。
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from collections.abc import Mapping, Sequence
+from xml.etree import ElementTree
+
+from .errors import MetadataError
+from .models import FilamentRef
+
+#: 合并后固定使用的 G-code 成员名
+MERGED_GCODE_MEMBER = "Metadata/plate_1.gcode"
+
+#: 指向「第 N 盘」的资源引用，需要统一改成第 1 盘
+_PLATE_ASSET_PATTERN = re.compile(r"((?:plate_no_light_|plate_small_|plate_|top_|pick_))(\d+)(\.[A-Za-z0-9]+)$")
+
+_XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>'
+
+
+def _parse_xml(text: str, *, source: str) -> ElementTree.Element:
+    """解析 XML，失败时抛工程内异常。"""
+    try:
+        return ElementTree.fromstring(text)
+    except ElementTree.ParseError as exc:
+        raise MetadataError(f"{source} 不是合法 XML", detail={"source": source, "reason": str(exc)}) from exc
+
+
+def _serialize_xml(root: ElementTree.Element) -> str:
+    """序列化并补回 XML 声明。"""
+    body = ElementTree.tostring(root, encoding="unicode")
+    return f"{_XML_DECLARATION}\n{body}"
+
+
+def _single_plate(root: ElementTree.Element, *, source: str) -> ElementTree.Element:
+    """取出唯一要保留的 ``<plate>``，并移除其余条目。"""
+    plates = root.findall("plate")
+    if not plates:
+        raise MetadataError(f"{source} 中没有 <plate> 节点", detail={"source": source})
+    for extra in plates[1:]:
+        root.remove(extra)
+    return plates[0]
+
+
+def _rewrite_asset_reference(value: str) -> str:
+    """把指向第 N 盘的资源引用改到第 1 盘。"""
+    return _PLATE_ASSET_PATTERN.sub(lambda match: f"{match.group(1)}1{match.group(3)}", value)
+
+
+def rewrite_model_settings(text: str, *, gcode_member: str = MERGED_GCODE_MEMBER) -> str:
+    """收敛 ``model_settings.config`` 为单盘，并把 ``gcode_file`` 指向合并产物。
+
+    :raises MetadataError: XML 非法或缺少 ``<plate>``。
+    """
+    root = _parse_xml(text, source="model_settings.config")
+    plate = _single_plate(root, source="model_settings.config")
+
+    for metadata in plate.findall("metadata"):
+        key = metadata.get("key")
+        if key == "plater_id":
+            metadata.set("value", "1")
+        elif key == "gcode_file":
+            metadata.set("value", gcode_member)
+        elif key in {
+            "thumbnail_file",
+            "thumbnail_no_light_file",
+            "top_file",
+            "pick_file",
+            "pattern_bbox_file",
+        }:
+            current = metadata.get("value") or ""
+            metadata.set("value", _rewrite_asset_reference(current))
+
+    # 子元素顺序对 Bambu 不重要（按标签名查找），但保持 plate 在前更接近原生文件
+    return _serialize_xml(root)
+
+
+def rewrite_slice_info(
+    text: str,
+    *,
+    prediction_s: int | None,
+    weight_g: float | None,
+    filaments: Sequence[FilamentRef],
+) -> str:
+    """合并 ``slice_info.config``：单盘 + 合计时长重量 + 全局耗材清单。
+
+    :raises MetadataError: XML 非法或缺少 ``<plate>``。
+    """
+    root = _parse_xml(text, source="slice_info.config")
+    plate = _single_plate(root, source="slice_info.config")
+
+    for metadata in plate.findall("metadata"):
+        key = metadata.get("key")
+        if key == "index":
+            metadata.set("value", "1")
+        elif key == "prediction" and prediction_s is not None:
+            metadata.set("value", str(int(prediction_s)))
+        elif key == "weight" and weight_g is not None:
+            metadata.set("value", f"{weight_g:g}")
+
+    for existing in plate.findall("filament"):
+        plate.remove(existing)
+
+    for ref in filaments:
+        element = ElementTree.SubElement(plate, "filament")
+        element.set("id", str(ref.slot + 1))
+        if ref.tray_info_idx:
+            element.set("tray_info_idx", ref.tray_info_idx)
+        if ref.type:
+            element.set("type", ref.type)
+        if ref.color:
+            element.set("color", ref.color)
+        if ref.used_m is not None:
+            element.set("used_m", f"{ref.used_m:.2f}")
+        if ref.used_g is not None:
+            element.set("used_g", f"{ref.used_g:.2f}")
+
+    return _serialize_xml(root)
+
+
+def rewrite_filament_sequence(text: str, *, slots: int) -> str:
+    """只保留 ``plate_1``，并按全局槽位数生成顺序。
+
+    :param slots: 全局占用槽位数；生成 ``1..slots`` 的 1-based 序列。
+    """
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise MetadataError("filament_sequence.json 不是合法 JSON", detail={"reason": str(exc)}) from exc
+
+    if not isinstance(data, dict):
+        raise MetadataError("filament_sequence.json 根节点不是对象")
+
+    merged = {"plate_1": {"sequence": list(range(1, slots + 1))}}
+    # 保留未知顶层键，避免新版字段被丢弃
+    for key, value in data.items():
+        if not key.startswith("plate_"):
+            merged[key] = value
+    return json.dumps(merged, ensure_ascii=False, separators=(",", ":"))
+
+
+def rewrite_plate_json(text: str, *, filaments: Sequence[FilamentRef]) -> str:
+    """更新 ``plate_1.json`` 中的颜色与耗材预设 ID。
+
+    未知键原样保留（新版本会新增字段）。
+    """
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise MetadataError("plate_1.json 不是合法 JSON", detail={"reason": str(exc)}) from exc
+
+    if not isinstance(data, dict):
+        raise MetadataError("plate_1.json 根节点不是对象")
+
+    if "filament_colors" in data:
+        data["filament_colors"] = [ref.color for ref in filaments]
+    if "filament_ids" in data:
+        data["filament_ids"] = [ref.tray_info_idx for ref in filaments]
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+
+def resolve_auxiliary_targets(project_settings: Mapping[str, object]) -> Mapping[str, object]:
+    """占位：project_settings 目前原样沿用基底文件。
+
+    保留此函数是为了让流水线有明确的扩展点 —— 未来若需按全局槽位重写
+    ``filament_colour`` 等数组，应在此处集中处理，而不是散落在流水线里。
+    """
+    return project_settings

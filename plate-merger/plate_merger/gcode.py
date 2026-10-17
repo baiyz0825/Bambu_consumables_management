@@ -161,6 +161,42 @@ class GcodeBlocks:
             return ""
         return "".join(lines[:-1])
 
+    @property
+    def executable_end_marker(self) -> str:
+        """``EXECUTABLE_BLOCK_END`` 标记行（含换行符）。
+
+        裁剪正文后需要把该行拼回去，保证包结构完整。
+        """
+        lines = self.executable.splitlines(keepends=True)
+        return lines[-1] if lines else ""
+
+
+def check_relative_mode_balance(text: str) -> tuple[bool, str]:
+    """检查相对/绝对坐标模式的闭合情况。
+
+    合盘只需要保证两点：
+
+    1. 不出现连续 ``G91``（连续进入相对模式通常意味着上一次没切回）；
+    2. 全文结束时处于绝对模式（``G90``）。
+
+    **不能用「G91 数量 == G90 数量」判断** —— Bambu 切片产物本身就会重复声明
+    ``G90``（默认绝对模式），数量天然不等（实测 8 vs 15）。
+
+    :return: ``(是否通过, 失败原因)``
+    """
+    mode_relative = False
+    for raw in text.splitlines():
+        code = raw.strip().rstrip(";").strip()
+        if code == "G91":
+            if mode_relative:
+                return False, "出现连续 G91，上一次相对模式未闭合"
+            mode_relative = True
+        elif code == "G90":
+            mode_relative = False
+    if mode_relative:
+        return False, "结尾仍处于相对模式"
+    return True, ""
+
 
 def extract_header_block(text: str) -> str | None:
     """提取 HEADER 块文本（含起止标记行）；不存在时返回 ``None``。

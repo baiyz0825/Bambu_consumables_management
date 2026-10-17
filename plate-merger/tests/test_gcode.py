@@ -7,6 +7,7 @@ import pytest
 from plate_merger.errors import MissingAnchorError
 from plate_merger.gcode import (
     GcodeBlocks,
+    check_relative_mode_balance,
     count_occurrences,
     detect_newline,
     extract_header_block,
@@ -111,3 +112,29 @@ def test_extract_header_block() -> None:
 
 def test_extract_header_block_absent() -> None:
     assert extract_header_block("G28\n") is None
+
+
+def test_executable_end_marker() -> None:
+    blocks = GcodeBlocks.parse(_SAMPLE)
+
+    assert blocks.executable_end_marker.strip() == "; EXECUTABLE_BLOCK_END"
+    assert blocks.executable_body + blocks.executable_end_marker == blocks.executable
+
+
+def test_relative_mode_balance_accepts_extra_g90() -> None:
+    """Bambu 切片产物会重复声明 G90，数量不等也应通过。"""
+    ok, reason = check_relative_mode_balance("G91\nG1 Z1\nG90\nG90\nG90\n")
+
+    assert ok is True, reason
+
+
+def test_relative_mode_balance_rejects_consecutive_g91() -> None:
+    ok, _ = check_relative_mode_balance("G91\nG91\nG90\n")
+
+    assert ok is False
+
+
+def test_relative_mode_balance_rejects_open_end() -> None:
+    ok, _ = check_relative_mode_balance("G91\nG1 Z1\n")
+
+    assert ok is False

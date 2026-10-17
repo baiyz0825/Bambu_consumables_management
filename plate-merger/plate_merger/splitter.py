@@ -78,3 +78,63 @@ def contains_swap_code(text: str, *flags: str) -> bool:
     :param flags: 起止标记，任一命中即认为已包含。
     """
     return any(flag and flag in text for flag in flags)
+
+
+#: 结束序列的锚点：退料指令（优先）与关闭喷嘴（兜底）
+_UNLOAD_ANCHOR = re.compile(r"^M62[01]\s+S255")
+_HOTEND_OFF_ANCHOR = re.compile(r"^M104\s+S0\b")
+_POWER_OFF = re.compile(r"^M18\b")
+
+
+def _find_end_anchor(lines: list[str]) -> int | None:
+    """从尾部向前找结束序列的起始行索引。
+
+    实测结构（Bambu 原生）::
+
+        M621 S255            ← 退料，结束序列起点
+        M104 S0 ; turn off hotend
+        M400
+        M17 Z0.4 / G1 Z135   ← 抬 Z
+        ...
+        ;=====printer finish  sound=========   ← 结束音乐
+        M18 X Y Z            ← 电机断电
+
+    优先以退料为锚点；没有退料时退化为关闭喷嘴。
+    """
+    for index in range(len(lines) - 1, -1, -1):
+        code = lines[index].strip()
+        if _UNLOAD_ANCHOR.match(code):
+            return index
+    for index in range(len(lines) - 1, -1, -1):
+        code = lines[index].strip()
+        if _HOTEND_OFF_ANCHOR.match(code):
+            return index
+    return None
+
+
+def trim_executable_tail(body: str, policy: StartEndPolicy) -> str:
+    """裁剪 ``EXECUTABLE`` 正文尾部的结束序列（中间盘专用）。
+
+    这是合盘最关键的一步：Bambu 的关加热、抬 Z、结束音乐与 ``M18`` 断电
+    **全部位于 EXECUTABLE 段内部**，若不裁剪，换盘码会在电机断电后执行。
+
+    - ``FULL``：只剥离 ``M18`` 断电指令，保留降温、退料与提示音（最保守）；
+    - ``SLIM``：截断到退料行（含），保留退料，避免喷嘴带料换盘；
+    - ``TURBO``：截断到退料行之前，连退料一起省掉。
+
+    :param body: 不含 ``EXECUTABLE_BLOCK_END`` 标记的正文。
+    :return: 裁剪后的正文。
+    """
+    if not body:
+        return body
+
+    lines = body.splitlines(keepends=True)
+    anchor = _find_end_anchor(lines)
+    if anchor is None:
+        return body
+
+    if policy is StartEndPolicy.FULL:
+        return "".join(line for line in lines if not _POWER_OFF.match(line.strip()))
+    if policy is StartEndPolicy.TURBO:
+        return "".join(lines[:anchor])
+    return "".join(lines[: anchor + 1])

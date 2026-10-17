@@ -13,6 +13,9 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 
+[project.scripts]
+plate-merger = "plate_merger.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["plate_merger*"]
