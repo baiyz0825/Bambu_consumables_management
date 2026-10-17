@@ -26,11 +26,12 @@ from .io3mf import ThreeMfPackage, compute_md5, write_3mf
 from .merger import PlateSegment, merge_segments
 from .metadata import (
     MERGED_GCODE_MEMBER,
-    MULTI_PLATE_ASSET_PATTERN,
     rewrite_filament_sequence,
     rewrite_model_settings,
     rewrite_plate_json,
+    rewrite_project_settings,
     rewrite_slice_info,
+    strip_extra_plate_assets,
 )
 from .models import InputPlate, MergeOptions, MergeResult, MergeWarning, PlateInfo
 from .sliceinfo import parse_slice_info
@@ -149,14 +150,7 @@ def _collect_inputs(
 
 def _strip_extra_plate_assets(members: dict[str, bytes]) -> None:
     """删除第 2 盘及以后的所有资源，只保留第 1 盘。"""
-    for name in list(members):
-        basename = name.rsplit("/", 1)[-1]
-        match = MULTI_PLATE_ASSET_PATTERN.match(basename)
-        if not match:
-            continue
-        number = next((group for group in match.groups() if group), None)
-        if number is not None and int(number) != 1:
-            del members[name]
+    strip_extra_plate_assets(members, keep=1)
 
 
 def _rewrite_metadata(
@@ -193,6 +187,16 @@ def _rewrite_metadata(
         members[plate_json_key] = rewrite_plate_json(
             members[plate_json_key].decode("utf-8"),
             filaments=[item.ref for item in plan_filaments],
+        ).encode("utf-8")
+
+    # 基底只对应第一个盘的耗材数，必须按全局槽位扩展，否则 Studio 只显示 1 个槽
+    project_key = next(
+        (name for name in members if name.lower() == "metadata/project_settings.config"), None
+    )
+    if project_key is not None:
+        members[project_key] = rewrite_project_settings(
+            members[project_key].decode("utf-8"),
+            filaments=plan_filaments,
         ).encode("utf-8")
 
 

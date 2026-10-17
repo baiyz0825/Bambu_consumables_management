@@ -32,6 +32,25 @@ class StartEndPolicy(str, Enum):
     TURBO = "turbo"
 
 
+class PlateDisplay(str, Enum):
+    """换盘时的盘号呈现方式。"""
+
+    OFF = "off"
+    #: 篡改 M73 剩余时间，让屏幕剩余时间反映盘号（需实机验证）
+    M73 = "m73"
+    #: 用 M117 在屏幕显示文本（A1 是否支持待验证，不支持则静默忽略）
+    M117 = "m117"
+    BOTH = "both"
+
+
+class AudioMode(str, Enum):
+    """换盘提示音模式。"""
+
+    OFF = "off"
+    SHORT = "short"
+    JINGLE = "jingle"
+
+
 class ApproachMode(str, Enum):
     """换盘时把热床推到后限位的方式。
 
@@ -206,6 +225,14 @@ class MergeOptions:
     hotbed_cooldown_c: int | None = None
     #: 换盘完成后等待秒数（0 表示不等待）
     wait_after_swap_s: int = 0
+    #: 盘号显示方式（默认关闭，需实机验证后再开）
+    plate_display: PlateDisplay = PlateDisplay.OFF
+    #: M73 盘号步长（仅 M73 模式使用）
+    m73_base: int = 1000
+    #: 换盘前提示音
+    pre_change_sound: AudioMode = AudioMode.OFF
+    #: 换盘后提示音
+    post_change_sound: AudioMode = AudioMode.JINGLE
     #: 换盘码起止标记（用于去重与结构校验）
     swap_start_flag: str = ";start change plate"
     swap_end_flag: str = ";end change plate"

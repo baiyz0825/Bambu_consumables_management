@@ -190,10 +190,71 @@ def rewrite_plate_json(text: str, *, filaments: Sequence[FilamentRef]) -> str:
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
 
 
-def resolve_auxiliary_targets(project_settings: Mapping[str, object]) -> Mapping[str, object]:
-    """占位：project_settings 目前原样沿用基底文件。
+#: 需要按耗材逐项重写的数组键
+_COLOR_KEYS = frozenset({"filament_colour", "default_filament_colour"})
+_TYPE_KEYS = frozenset({"filament_type"})
+_ID_KEYS = frozenset({"filament_ids"})
 
-    保留此函数是为了让流水线有明确的扩展点 —— 未来若需按全局槽位重写
-    ``filament_colour`` 等数组，应在此处集中处理，而不是散落在流水线里。
+
+def rewrite_project_settings(text: str, *, filaments: Sequence[GlobalFilament]) -> str:
+    """按全局槽位扩展/收缩 ``project_settings.config`` 中的耗材数组。
+
+    为什么必须做：基底文件来自第一个盘，其 ``filament_colour`` 等数组长度只对应**那一盘**的耗材数。
+    合盘后 G-code 可能用到 3 个槽位，而 Studio 只看到 1 个 —— 用户手动映射 AMS 时会改错料。
+
+    处理规则：
+
+    - 颜色 / 类型 / 预设 ID 数组按全局耗材逐项重写；
+    - 其余 ``filament_*`` / ``nozzle_*`` 数组按全局数量循环补齐（保持首项语义）；
+    - 非数组值（如 ``filament_maps`` 是空格分隔字符串）原样保留。
+    """
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise MetadataError("project_settings.config 不是合法 JSON", detail={"reason": str(exc)}) from exc
+    if not isinstance(data, dict):
+        raise MetadataError("project_settings.config 根节点不是对象")
+
+    target_len = len(filaments)
+    if target_len == 0:
+        return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+    for key, value in list(data.items()):
+        if not isinstance(value, list) or not value:
+            continue
+
+        if key in _COLOR_KEYS:
+            data[key] = [item.ref.color for item in filaments]
+        elif key in _TYPE_KEYS:
+            data[key] = [item.ref.type for item in filaments]
+        elif key in _ID_KEYS:
+            data[key] = [item.ref.tray_info_idx for item in filaments]
+        elif key.startswith(("filament_", "nozzle_")):
+            data[key] = [value[index % len(value)] for index in range(target_len)]
+
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+
+def strip_extra_plate_assets(members: dict[str, bytes], *, keep: int = 1) -> None:
+    """删除第 ``keep`` 盘以外的所有盘资源（就地修改）。
+
+    合盘后只剩一个盘，其余 ``plate_N.*`` / ``top_N.*`` / ``pick_N.*`` 必须清理，
+    否则包内会残留指向已不存在 G-code 的引用。
+    """
+    for name in list(members):
+        basename = name.rsplit("/", 1)[-1]
+        match = MULTI_PLATE_ASSET_PATTERN.match(basename)
+        if not match:
+            continue
+        number = next((group for group in match.groups() if group), None)
+        if number is not None and int(number) != keep:
+            del members[name]
+
+
+def resolve_auxiliary_targets(project_settings: Mapping[str, object]) -> Mapping[str, object]:
+    """占位：保留扩展点。
+
+    目前耗材数组重写由 :func:`rewrite_project_settings` 负责；
+    此函数供未来处理其它辅助配置（如缩略图引用）时集中扩展。
     """
     return project_settings

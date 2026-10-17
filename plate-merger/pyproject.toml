@@ -12,6 +12,8 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+#: 下发打印才需要 MQTT 客户端；合盘本身仍保持零依赖
+dispatch = ["paho-mqtt>=2.0"]
 
 [project.scripts]
 plate-merger = "plate_merger.cli:main"

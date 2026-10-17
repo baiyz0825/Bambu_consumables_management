@@ -27,10 +27,11 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
+from .audio import render_audio
 from .errors import ValidationError
 from .filament import remap_gcode
 from .gcode import GcodeBlocks, detect_newline
-from .models import MergeOptions
+from .models import MergeOptions, PlateDisplay
 from .splitter import trim_epilogue, trim_executable_tail
 from .swapcode import render_swap_code
 
@@ -58,9 +59,23 @@ class MergeOutcome:
     swap_count: int
 
 
-def build_swap_block(options: MergeOptions, *, newline: str = "\n") -> str:
-    """构建「降温 + 换盘码 + 等待」的完整注入块。"""
+def build_swap_block(
+    options: MergeOptions,
+    *,
+    plate_index: int = 1,
+    total_plates: int = 1,
+    newline: str = "\n",
+) -> str:
+    """构建「提示音 + 降温 + 换盘码 + 盘号 + 等待 + 完成音」的完整注入块。
+
+    :param plate_index: 即将打印的盘号（1-based），用于屏幕显示。
+    :param total_plates: 总盘数，用于 ``M117`` 文本。
+    """
     parts: list[str] = []
+
+    pre_sound = render_audio(options.pre_change_sound, newline=newline)
+    if pre_sound:
+        parts.append(pre_sound.rstrip("\r\n"))
 
     if options.hotbed_cooldown_c is not None and options.hotbed_cooldown_c >= 0:
         parts.append(f"M190 S{options.hotbed_cooldown_c} ; 热床降温")
@@ -78,8 +93,18 @@ def build_swap_block(options: MergeOptions, *, newline: str = "\n") -> str:
     # render_swap_code 已带结尾换行，去掉后再统一拼接
     parts.append(swap_code.rstrip("\r\n"))
 
+    if options.plate_display in (PlateDisplay.M73, PlateDisplay.BOTH):
+        # 用剩余时间的高位承载盘号；会牺牲时间显示准确性，默认关闭
+        parts.append(f"M73 P0 R{options.m73_base * plate_index}")
+    if options.plate_display in (PlateDisplay.M117, PlateDisplay.BOTH):
+        parts.append(f"M117 Plate {plate_index}/{total_plates}")
+
     if options.wait_after_swap_s > 0:
         parts.append(f"G4 P{int(options.wait_after_swap_s * 1000)}")
+
+    post_sound = render_audio(options.post_change_sound, newline=newline)
+    if post_sound:
+        parts.append(post_sound.rstrip("\r\n"))
 
     return newline.join(parts) + newline
 
@@ -103,13 +128,19 @@ def merge_segments(
     if newline is None:
         newline = detect_newline(segments[0].blocks.executable or segments[0].blocks.preamble)
 
-    swap_block = build_swap_block(options, newline=newline)
+    total = len(segments)
     chunks: list[str] = [_ensure_trailing_newline(segments[0].blocks.preamble, newline)]
 
-    total = len(segments)
     for position, segment in enumerate(segments):
         if position > 0:
-            chunks.append(swap_block)
+            chunks.append(
+                build_swap_block(
+                    options,
+                    plate_index=position + 1,
+                    total_plates=total,
+                    newline=newline,
+                )
+            )
 
         is_last = position == total - 1
         # 中间盘必须裁掉 EXECUTABLE 段尾部的结束序列（关加热 / 抬 Z / 结束音乐 / M18 断电），

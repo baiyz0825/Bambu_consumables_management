@@ -6,6 +6,15 @@
 
 from __future__ import annotations
 
+from .audio import PLATE_SOUND_FLAG, render_audio
+from .dispatch import (
+    DispatchResult,
+    PrinterTarget,
+    build_project_file_command,
+    dispatch,
+    package_md5,
+    upload_package,
+)
 from .errors import (
     InvalidPackageError,
     MetadataError,
@@ -15,8 +24,11 @@ from .errors import (
     UnsupportedFormatError,
     ValidationError,
 )
+from .filament import FilamentPlan, GlobalFilament, PlateMapping, build_plan, remap_gcode
+from .fingerprint import Fingerprint, diff as fingerprint_diff, probe
 from .gcode import (
     GcodeBlocks,
+    check_relative_mode_balance,
     count_occurrences,
     detect_newline,
     extract_header_block,
@@ -24,17 +36,31 @@ from .gcode import (
     locate_anchor,
 )
 from .io3mf import CONTENT_TYPES, ThreeMfPackage, compute_md5, write_3mf
+from .merger import MergeOutcome, PlateSegment, build_swap_block, merge_segments
+from .metadata import (
+    MERGED_GCODE_MEMBER,
+    rewrite_filament_sequence,
+    rewrite_model_settings,
+    rewrite_plate_json,
+    rewrite_project_settings,
+    rewrite_slice_info,
+    strip_extra_plate_assets,
+)
 from .models import (
     ApproachMode,
+    AudioMode,
     FilamentRef,
     InputPlate,
     MergeOptions,
     MergeResult,
     MergeWarning,
+    PlateDisplay,
     PlateInfo,
     StartEndPolicy,
     SwapParams,
 )
+from .pipeline import MergeRequest, merge
+from .planner import PlanResult, PlateJob, PlannedPlate, plan as plan_plates
 from .presets import BALANCED, BUILTIN_PRESETS, CONSERVATIVE, FAST, get_preset, list_presets
 from .sliceinfo import (
     PlateJson,
@@ -46,8 +72,11 @@ from .sliceinfo import (
     parse_project_settings,
     parse_slice_info,
 )
+from .splitter import contains_swap_code, trim_epilogue, trim_executable_tail
 from .swapcode import estimate_duration_s, render_swap_code, validate_params
+from .toolfile import build_tool_file, neutralize_heating
 from .utils import normalize_color, to_bool, to_float, to_int
+from .verifier import CheckResult, VerificationReport, verify_package
 
 __version__ = "0.1.0"
 
@@ -65,8 +94,9 @@ __all__ = [
     "ThreeMfPackage",
     "compute_md5",
     "write_3mf",
-    # G-code 解析
+    # G-code
     "GcodeBlocks",
+    "check_relative_mode_balance",
     "count_occurrences",
     "detect_newline",
     "extract_header_block",
@@ -93,17 +123,68 @@ __all__ = [
     "render_swap_code",
     "validate_params",
     "estimate_duration_s",
+    # 耗材
+    "FilamentRef",
+    "FilamentPlan",
+    "GlobalFilament",
+    "PlateMapping",
+    "build_plan",
+    "remap_gcode",
+    # 裁剪与拼接
+    "StartEndPolicy",
+    "contains_swap_code",
+    "trim_epilogue",
+    "trim_executable_tail",
+    "PlateSegment",
+    "MergeOutcome",
+    "build_swap_block",
+    "merge_segments",
+    # 元数据重写
+    "MERGED_GCODE_MEMBER",
+    "rewrite_slice_info",
+    "rewrite_model_settings",
+    "rewrite_filament_sequence",
+    "rewrite_plate_json",
+    "rewrite_project_settings",
+    "strip_extra_plate_assets",
+    # 校验
+    "CheckResult",
+    "VerificationReport",
+    "verify_package",
+    # 流水线
+    "MergeRequest",
+    "MergeOptions",
+    "MergeResult",
+    "MergeWarning",
+    "merge",
+    # 展示与音频
+    "PlateDisplay",
+    "AudioMode",
+    "PLATE_SOUND_FLAG",
+    "render_audio",
+    # 指纹与排产
+    "Fingerprint",
+    "probe",
+    "fingerprint_diff",
+    "PlateJob",
+    "PlannedPlate",
+    "PlanResult",
+    "plan_plates",
+    # 测试文件
+    "build_tool_file",
+    "neutralize_heating",
+    # 下发
+    "PrinterTarget",
+    "DispatchResult",
+    "build_project_file_command",
+    "package_md5",
+    "upload_package",
+    "dispatch",
     # 工具
     "normalize_color",
     "to_int",
     "to_float",
     "to_bool",
-    # 领域模型
-    "StartEndPolicy",
-    "FilamentRef",
     "PlateInfo",
     "InputPlate",
-    "MergeOptions",
-    "MergeWarning",
-    "MergeResult",
 ]
