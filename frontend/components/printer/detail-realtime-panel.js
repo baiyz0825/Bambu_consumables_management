@@ -1,5 +1,7 @@
 "use client";
 
+import dynamic from "next/dynamic";
+
 import {
   describeFan,
   formatDateTime,
@@ -14,7 +16,14 @@ import {
 } from "../../lib/printer-control-api";
 import { Badge } from "../ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { DetailTwinPlaceholder } from "./detail-twin-placeholder";
+const TwinView = dynamic(() => import("./twin/twin-view").then((m) => m.TwinView), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[420px] w-full items-center justify-center rounded-xl bg-[#0b0d12] text-sm text-white/50">
+      3D 模型加载中…
+    </div>
+  )
+});
 
 /** 进度条（无外部依赖）：null 值渲染 0%，但标签显示 "-"。 */
 function Bar({ value, label, tone = "blue" }) {
@@ -116,8 +125,18 @@ export function DetailRealtimePanel({ liveState, eventMeta }) {
 
   return (
     <div className="space-y-4">
-      {/* —— 3D 数字孪生占位（本轮不做 3D，只锁位置）—— */}
-      <DetailTwinPlaceholder />
+      {/* —— 数字孪生：参数化 A1 模型，随实时状态联动 —— */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">数字孪生</CardTitle>
+          <CardDescription>
+            按 A1 真实规格建模：喷嘴/热床随温度变色，打印件随层数生长，风扇转速、腔灯与 4 个料卷实时联动。
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TwinView state={state} />
+        </CardContent>
+      </Card>
 
       {!hasData ? (
         <Card>
