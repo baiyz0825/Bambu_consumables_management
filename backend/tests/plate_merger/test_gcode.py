@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from plate_merger.errors import MissingAnchorError
-from plate_merger.gcode import (
+from app.plate_merger.errors import MissingAnchorError
+from app.plate_merger.gcode import (
     GcodeBlocks,
     check_relative_mode_balance,
     count_occurrences,

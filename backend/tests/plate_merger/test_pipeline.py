@@ -8,11 +8,11 @@ import zipfile
 
 import pytest
 
-from plate_merger.errors import UnsupportedFormatError, ValidationError
-from plate_merger.io3mf import CONTENT_TYPES, compute_md5, write_3mf
-from plate_merger.models import MergeOptions
-from plate_merger.pipeline import MergeRequest, merge
-from plate_merger.presets import CONSERVATIVE
+from app.plate_merger.errors import UnsupportedFormatError, ValidationError
+from app.plate_merger.io3mf import CONTENT_TYPES, compute_md5, write_3mf
+from app.plate_merger.models import MergeOptions
+from app.plate_merger.pipeline import MergeRequest, merge
+from app.plate_merger.presets import CONSERVATIVE
 
 _CONTENT_TYPES = (
     b'<?xml version="1.0" encoding="UTF-8"?>'
@@ -191,7 +191,7 @@ def test_output_removed_when_verification_fails(tmp_path, monkeypatch) -> None:
     _make_3mf(source, ["#F6DA5A", "#FFFFFF"])
     output = tmp_path / "merged.gcode.3mf"
 
-    from plate_merger import pipeline
+    from app.plate_merger import pipeline
 
     monkeypatch.setattr(pipeline, "verify_package", lambda *args, **kwargs: _report_with_failure())
 
@@ -202,6 +202,6 @@ def test_output_removed_when_verification_fails(tmp_path, monkeypatch) -> None:
 
 
 def _report_with_failure():
-    from plate_merger.verifier import CheckResult, VerificationReport
+    from app.plate_merger.verifier import CheckResult, VerificationReport
 
     return VerificationReport(checks=(CheckResult(name="forced", passed=False, detail="forced"),))

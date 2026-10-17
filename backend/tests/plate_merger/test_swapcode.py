@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from plate_merger.errors import SwapCodeError
-from plate_merger.models import ApproachMode, SwapParams
-from plate_merger.presets import BALANCED, CONSERVATIVE, FAST, get_preset, list_presets
-from plate_merger.swapcode import estimate_duration_s, render_swap_code, validate_params
+from app.plate_merger.errors import SwapCodeError
+from app.plate_merger.models import ApproachMode, SwapParams
+from app.plate_merger.presets import BALANCED, CONSERVATIVE, FAST, get_preset, list_presets
+from app.plate_merger.swapcode import estimate_duration_s, render_swap_code, validate_params
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "0623-code.gcode"
 

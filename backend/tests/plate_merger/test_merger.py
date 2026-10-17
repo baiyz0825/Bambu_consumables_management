@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from plate_merger.errors import ValidationError
-from plate_merger.gcode import GcodeBlocks
-from plate_merger.merger import PlateSegment, build_swap_block, merge_segments
-from plate_merger.models import MergeOptions, StartEndPolicy
-from plate_merger.presets import CONSERVATIVE
+from app.plate_merger.errors import ValidationError
+from app.plate_merger.gcode import GcodeBlocks
+from app.plate_merger.merger import PlateSegment, build_swap_block, merge_segments
+from app.plate_merger.models import MergeOptions, StartEndPolicy
+from app.plate_merger.presets import CONSERVATIVE
 
 _END_SEQUENCE = (
     "M621 S255\n"

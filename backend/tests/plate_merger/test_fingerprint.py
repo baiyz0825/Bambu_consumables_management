@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 
-from _fixtures import make_3mf
+from tests.plate_merger._fixtures import make_3mf
 
-from plate_merger.fingerprint import diff, probe
+from app.plate_merger.fingerprint import diff, probe
 
 
 def test_probe_reads_client_version_and_plate_count(tmp_path) -> None:

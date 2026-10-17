@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from plate_merger.audio import PLATE_SOUND_FLAG, render_audio
-from plate_merger.models import AudioMode
+from app.plate_merger.audio import PLATE_SOUND_FLAG, render_audio
+from app.plate_merger.models import AudioMode
 
 
 def test_off_mode_returns_empty() -> None:

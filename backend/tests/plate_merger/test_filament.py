@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from plate_merger.errors import ValidationError
-from plate_merger.filament import build_plan, remap_gcode
-from plate_merger.models import FilamentRef, PlateInfo
+from app.plate_merger.errors import ValidationError
+from app.plate_merger.filament import build_plan, remap_gcode
+from app.plate_merger.models import FilamentRef, PlateInfo
 
 YELLOW = "#F6DA5A"
 WHITE = "#FFFFFF"

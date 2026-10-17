@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from plate_merger.planner import PlateJob, plan
+from app.plate_merger.planner import PlateJob, plan
 
 YELLOW = ("P25570cf", "PETG", "#F6DA5A")
 WHITE = ("P25570cf", "PETG", "#FFFFFF")

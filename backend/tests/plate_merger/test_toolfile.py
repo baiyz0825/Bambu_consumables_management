@@ -7,12 +7,12 @@ import zipfile
 
 import pytest
 
-from _fixtures import make_3mf
+from tests.plate_merger._fixtures import make_3mf
 
-from plate_merger.errors import ValidationError
-from plate_merger.models import MergeOptions
-from plate_merger.presets import CONSERVATIVE
-from plate_merger.toolfile import build_tool_file, neutralize_heating
+from app.plate_merger.errors import ValidationError
+from app.plate_merger.models import MergeOptions
+from app.plate_merger.presets import CONSERVATIVE
+from app.plate_merger.toolfile import build_tool_file, neutralize_heating
 
 
 def test_neutralize_heating_zeroes_targets_and_drops_waits() -> None:

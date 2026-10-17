@@ -6,8 +6,8 @@ import zipfile
 
 import pytest
 
-from plate_merger.errors import InvalidPackageError
-from plate_merger.io3mf import CONTENT_TYPES, ThreeMfPackage, compute_md5, write_3mf
+from app.plate_merger.errors import InvalidPackageError
+from app.plate_merger.io3mf import CONTENT_TYPES, ThreeMfPackage, compute_md5, write_3mf
 
 _CT_XML = (
     b'<?xml version="1.0" encoding="UTF-8"?>'

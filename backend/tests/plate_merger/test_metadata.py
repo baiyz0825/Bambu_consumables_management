@@ -7,15 +7,15 @@ import re
 
 import pytest
 
-from plate_merger.errors import MetadataError
-from plate_merger.filament import GlobalFilament
-from plate_merger.metadata import (
+from app.plate_merger.errors import MetadataError
+from app.plate_merger.filament import GlobalFilament
+from app.plate_merger.metadata import (
     rewrite_filament_sequence,
     rewrite_model_settings,
     rewrite_plate_json,
     rewrite_slice_info,
 )
-from plate_merger.models import FilamentRef
+from app.plate_merger.models import FilamentRef
 
 _SLICE_INFO = """<?xml version="1.0" encoding="UTF-8"?>
 <config>

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from plate_merger.errors import MetadataError
-from plate_merger.sliceinfo import (
+from app.plate_merger.errors import MetadataError
+from app.plate_merger.sliceinfo import (
     parse_filament_sequence,
     parse_plate_json,
     parse_project_settings,

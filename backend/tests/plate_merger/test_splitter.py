@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from plate_merger.errors import MissingAnchorError
-from plate_merger.models import StartEndPolicy
-from plate_merger.splitter import contains_swap_code, should_drop, trim_epilogue, trim_executable_tail
+from app.plate_merger.errors import MissingAnchorError
+from app.plate_merger.models import StartEndPolicy
+from app.plate_merger.splitter import contains_swap_code, should_drop, trim_epilogue, trim_executable_tail
 
 _EPILOGUE = (
     "; end of print\n"

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from plate_merger.dispatch import build_project_file_command
+from app.plate_merger.dispatch import build_project_file_command
 
 
 def _command(**overrides):

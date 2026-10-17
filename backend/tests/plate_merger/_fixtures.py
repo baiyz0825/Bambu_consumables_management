@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from plate_merger.io3mf import CONTENT_TYPES, write_3mf
+from app.plate_merger.io3mf import CONTENT_TYPES, write_3mf
 
 CONTENT_TYPES_XML = (
     b'<?xml version="1.0" encoding="UTF-8"?>'
