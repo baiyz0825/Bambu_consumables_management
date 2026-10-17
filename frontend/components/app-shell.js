@@ -57,6 +57,28 @@ const NAV = [
     )
   },
   {
+    href: "/production",
+    label: "生产",
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m12 2 9 5-9 5-9-5 9-5Z" />
+        <path d="m3 12 9 5 9-5" />
+        <path d="m3 17 9 5 9-5" />
+      </svg>
+    )
+  },
+  {
     href: "/stocks",
     label: "库存",
     icon: (

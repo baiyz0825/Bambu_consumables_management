@@ -14,10 +14,13 @@
 
 from __future__ import annotations
 
+import os
+import re
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -51,13 +54,26 @@ router = APIRouter(prefix="/plate-merger", tags=["plate-merger"])
 
 #: 生成产物统一落在这里，下载接口只允许读取该目录
 _OUTPUT_DIR = Path(tempfile.gettempdir()) / "plate-merger"
+#: 上传的原始 3MF；API 只允许从这里读取输入，杜绝任意路径读取
+_UPLOAD_DIR = Path(tempfile.gettempdir()) / "plate-merger-uploads"
+#: 单文件上限（3MF 常见 10~200MB）
+_MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 
 
 def _require_3mf(path_str: str) -> Path:
-    """校验输入路径：必须存在且为 ``.3mf``。"""
-    path = Path(path_str).expanduser()
+    """校验输入路径：必须位于上传目录内，且为 ``.3mf``。
+
+    API 不接受任意路径，避免通过 ``path`` 参数读取主机上的任意文件；
+    CLI 与单测直接调用 ``app.plate_merger``，不受此限制。
+    """
+    path = Path(path_str).expanduser().resolve()
+    if path.parent != _UPLOAD_DIR.resolve():
+        raise HTTPException(
+            status_code=400,
+            detail="路径非法：请先调用 /plate-merger/upload 上传文件",
+        )
     if not path.is_file():
-        raise HTTPException(status_code=400, detail=f"文件不存在：{path}")
+        raise HTTPException(status_code=400, detail=f"文件不存在：{path.name}")
     if path.suffix.lower() != ".3mf":
         raise HTTPException(status_code=400, detail="只接受 .3mf 文件")
     return path
@@ -165,6 +181,66 @@ def _load_plate_infos(items: list[ItemIn]) -> list[PlateInfo]:
                 )
             )
     return infos
+
+
+@router.post("/upload")
+async def upload(file: UploadFile = File(...)) -> dict:
+    """上传 3MF 到服务端，返回后续接口（analyze / merge / probe）可用的 path。"""
+    original = Path(file.filename or "").name
+    if not original.lower().endswith(".3mf"):
+        raise HTTPException(status_code=400, detail="只接受 .3mf 文件")
+
+    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = re.sub(r"[^\w.\-]", "_", original)
+    target = _UPLOAD_DIR / f"{uuid4().hex[:8]}-{safe_name}"
+
+    size = 0
+    try:
+        with target.open("wb") as handle:
+            while chunk := await file.read(1 << 20):
+                size += len(chunk)
+                if size > _MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="文件超过 512MB 上限")
+                handle.write(chunk)
+    except HTTPException:
+        target.unlink(missing_ok=True)
+        raise
+    finally:
+        await file.close()
+
+    return {"path": str(target), "name": original, "size": size}
+
+
+@router.get("/outputs")
+def list_outputs() -> list[dict]:
+    """列出已生成的合盘产物（按修改时间倒序）。"""
+    if not _OUTPUT_DIR.is_dir():
+        return []
+
+    entries: list[dict] = []
+    for path in _OUTPUT_DIR.iterdir():
+        if not path.is_file() or path.suffix.lower() != ".3mf":
+            continue
+        stat = path.stat()
+        entries.append({"name": path.name, "size": stat.st_size, "mtime": stat.st_mtime})
+
+    entries.sort(key=lambda item: item["mtime"], reverse=True)
+    for item in entries:
+        item["download_url"] = f"/plate-merger/download/{item['name']}"
+    return entries
+
+
+@router.delete("/outputs/{name}")
+def delete_output(name: str) -> dict:
+    """删除一个产物文件。"""
+    if name in {"", ".", ".."} or "/" in name or "\\" in name:
+        raise HTTPException(status_code=400, detail="非法文件名")
+
+    target = _OUTPUT_DIR / name
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在")
+    target.unlink()
+    return {"deleted": name}
 
 
 @router.get("/presets")
