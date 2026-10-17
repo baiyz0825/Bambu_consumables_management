@@ -54,6 +54,31 @@ function errText(e) {
   return String(e?.message || e);
 }
 
+/** 产物登记状态（来自 merged_artifacts.status）→ 文案与配色 */
+const STATUS_META = {
+  draft: { label: "未下发", cls: "bg-muted text-muted-foreground" },
+  dispatched: { label: "已下发", cls: "bg-[#0071e3]/10 text-[#0071e3] dark:text-[#0a84ff]" },
+  printing: { label: "打印中", cls: "bg-emerald-500/10 text-emerald-600" },
+  completed: { label: "已完成", cls: "bg-emerald-600/10 text-emerald-700" },
+  failed: { label: "失败", cls: "bg-destructive/10 text-destructive" }
+};
+
+/** 切片颜色是 RRGGBBAA，转成浏览器可用的 #RRGGBB */
+function hexColor(value) {
+  if (typeof value !== "string") return "transparent";
+  const s = value.trim().replace(/^#/, "");
+  return s.length >= 6 ? `#${s.slice(0, 6)}` : "transparent";
+}
+
+/** 秒 → 「x 小时 y 分」 */
+function fmtDuration(seconds) {
+  const total = Math.round(Number(seconds) || 0);
+  if (total <= 0) return "-";
+  const h = Math.floor(total / 3600);
+  const m = Math.round((total % 3600) / 60);
+  return h > 0 ? `${h} 小时 ${m} 分` : `${m} 分`;
+}
+
 export default function Page() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -302,7 +327,39 @@ export default function Page() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium break-all">{item.name}</span>
                         <Badge variant="outline">3MF</Badge>
+                        {item.artifact ? (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                              (STATUS_META[item.artifact.status] || STATUS_META.draft).cls
+                            }`}
+                          >
+                            {(STATUS_META[item.artifact.status] || STATUS_META.draft).label}
+                          </span>
+                        ) : null}
                       </div>
+                      {item.artifact ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                          <span>{item.artifact.plate_count} 盘</span>
+                          {item.artifact.total_time_s ? (
+                            <span>· {fmtDuration(item.artifact.total_time_s)}</span>
+                          ) : null}
+                          {item.artifact.total_weight_g != null ? (
+                            <span>· {Number(item.artifact.total_weight_g).toFixed(1)} g</span>
+                          ) : null}
+                          {(item.artifact.filaments || []).map((f) => (
+                            <span key={f.slot} className="inline-flex items-center gap-1">
+                              <span
+                                className="inline-block h-2.5 w-2.5 rounded-full border border-black/10"
+                                style={{ backgroundColor: hexColor(f.color) }}
+                              />
+                              {f.type || "-"}
+                              {f.total_used_g ? ` ${Number(f.total_used_g).toFixed(1)}g` : ""}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-1 text-xs text-muted-foreground">无登记记录</div>
+                      )}
                     </DataCell>
                     <DataCell label="大小">{formatBytes(item.size)}</DataCell>
                     <DataCell label="生成时间">{fmtTime(item.mtime)}</DataCell>

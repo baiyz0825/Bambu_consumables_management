@@ -4,6 +4,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,7 @@ from app.db.models.consumption_record import ConsumptionRecord
 from app.db.models.ams_color_mapping import AmsColorMapping
 from app.db.models.material_ledger import MaterialLedger
 from app.db.models.material_stock import MaterialStock
+from app.db.models.merged_artifact import MergedArtifact
 from app.db.models.normalized_event import NormalizedEvent
 from app.db.models.print_job import PrintJob
 from app.db.models.tray_mapping import TrayMapping
@@ -683,6 +685,51 @@ def _extract_filament_grams_by_tray(
     return (grams_by_tray, source, confidence)
 
 
+async def _link_artifact_to_job(
+    session: AsyncSession,
+    printer_id: uuid.UUID,
+    job: PrintJob,
+    data: dict,
+) -> None:
+    """把已下发的合盘产物关联到首次打印任务。
+
+    匹配依据：MQTT 上报的 ``gcode_file`` / ``subtask_name`` 中包含产物主名
+    （``merged.gcode.3mf`` → 主名 ``merged``）。只匹配同一打印机且
+    ``status='dispatched'`` 的记录，避免误关联。
+
+    回填失败不能影响扣料主流程，因此异常全部吞掉。
+    """
+    try:
+        names = [
+            Path(str(value)).name
+            for value in (data.get("gcode_file"), data.get("subtask_name"))
+            if value
+        ]
+        if not names:
+            return
+
+        artifacts = (
+            await session.execute(
+                select(MergedArtifact).where(
+                    MergedArtifact.printer_id == printer_id,
+                    MergedArtifact.status == "dispatched",
+                    MergedArtifact.job_id.is_(None),
+                )
+            )
+        ).scalars().all()
+
+        for artifact in artifacts:
+            stem = Path(artifact.file_name).stem
+            base = stem[: -len(".gcode")] if stem.endswith(".gcode") else stem
+            if base and any(base in name for name in names):
+                artifact.job_id = job.id
+                artifact.status = "printing"
+                artifact.updated_at = _utcnow()
+                return
+    except Exception:
+        logger.debug("合盘产物关联跳过（不影响扣料）", exc_info=True)
+
+
 async def process_event(session: AsyncSession, ev: NormalizedEvent) -> None:
     printer_id = ev.printer_id
     job_key = _make_job_key(printer_id, ev)
@@ -711,6 +758,7 @@ async def process_event(session: AsyncSession, ev: NormalizedEvent) -> None:
         )
         session.add(job)
         await session.flush()
+        await _link_artifact_to_job(session, printer_id, job, data)
 
         # If we created a "real" job (task_id/subtask_id present), close any recent stub running jobs.
         data_task_id = data.get("task_id") or data.get("subtask_id")

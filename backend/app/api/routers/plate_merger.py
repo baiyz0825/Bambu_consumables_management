@@ -14,15 +14,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_db
+from app.db.models.merged_artifact import MergedArtifact
+from app.db.models.printer import Printer
 
 from app.plate_merger import (
     AudioMode,
@@ -158,6 +166,8 @@ class DispatchIn(BaseModel):
     use_ams: bool = False
     ams_mapping: str = ""
     wait_s: float = Field(default=15.0, ge=1.0, le=120.0)
+    #: 可选：关联的合盘产物记录，下发成功后更新其状态
+    artifact_id: str | None = None
 
 
 def _load_plate_infos(items: list[ItemIn]) -> list[PlateInfo]:
@@ -211,18 +221,60 @@ async def upload(file: UploadFile = File(...)) -> dict:
     return {"path": str(target), "name": original, "size": size}
 
 
+def _artifact_to_dict(artifact: MergedArtifact) -> dict:
+    """artifact ORM → API 字典。"""
+    return {
+        "id": str(artifact.id),
+        "file_name": artifact.file_name,
+        "file_path": artifact.file_path,
+        "file_size": artifact.file_size,
+        "md5": artifact.md5,
+        "plate_count": artifact.plate_count,
+        "total_time_s": artifact.total_time_s,
+        "total_weight_g": artifact.total_weight_g,
+        "filaments": artifact.filaments_json,
+        "sources": artifact.sources_json,
+        "options": artifact.options_json,
+        "status": artifact.status,
+        "printer_id": str(artifact.printer_id) if artifact.printer_id else None,
+        "job_id": str(artifact.job_id) if artifact.job_id else None,
+        "dispatched_at": artifact.dispatched_at.isoformat() if artifact.dispatched_at else None,
+        "created_at": artifact.created_at.isoformat() if artifact.created_at else None,
+        "exists": (_OUTPUT_DIR / artifact.file_name).is_file(),
+        "download_url": f"/plate-merger/download/{artifact.file_name}",
+    }
+
+
+@router.get("/artifacts")
+async def list_artifacts(limit: int = 100, db: AsyncSession = Depends(get_db)) -> list[dict]:
+    """合盘产物记录（含耗材清单与下发状态），按创建时间倒序。"""
+    rows = (
+        await db.execute(
+            select(MergedArtifact).order_by(MergedArtifact.created_at.desc()).limit(limit)
+        )
+    ).scalars().all()
+    return [_artifact_to_dict(item) for item in rows]
+
+
 @router.get("/outputs")
-def list_outputs() -> list[dict]:
-    """列出已生成的合盘产物（按修改时间倒序）。"""
+async def list_outputs(db: AsyncSession = Depends(get_db)) -> list[dict]:
+    """列出磁盘上的产物文件；有对应记录时附带 ``artifact`` 元数据。"""
     if not _OUTPUT_DIR.is_dir():
         return []
+
+    rows = (await db.execute(select(MergedArtifact))).scalars().all()
+    by_name = {item.file_name: item for item in rows}
 
     entries: list[dict] = []
     for path in _OUTPUT_DIR.iterdir():
         if not path.is_file() or path.suffix.lower() != ".3mf":
             continue
         stat = path.stat()
-        entries.append({"name": path.name, "size": stat.st_size, "mtime": stat.st_mtime})
+        entry: dict = {"name": path.name, "size": stat.st_size, "mtime": stat.st_mtime}
+        artifact = by_name.get(path.name)
+        if artifact is not None:
+            entry["artifact"] = _artifact_to_dict(artifact)
+        entries.append(entry)
 
     entries.sort(key=lambda item: item["mtime"], reverse=True)
     for item in entries:
@@ -317,8 +369,15 @@ def analyze(payload: AnalyzeIn) -> dict:
 
 
 @router.post("/merge")
-def merge_endpoint(payload: MergeIn) -> dict:
-    """执行合盘，产物写入临时目录，用 ``/download`` 取回。"""
+async def merge_endpoint(payload: MergeIn, db: AsyncSession = Depends(get_db)) -> dict:
+    """执行合盘，产物写入临时目录，并登记到 ``merged_artifacts``。
+
+    登记是「产物 → 下发 → 任务 → 扣料」链路的起点：没有这条记录，
+    系统只知道磁盘上多了个文件，不知道它是一次生产。
+    """
+    # 先读元数据：既用于全局槽位统计，也用于写产物记录
+    infos = _load_plate_infos(payload.items)
+
     try:
         requests = [
             MergeRequest(source=_require_3mf(item.path), plate_index=item.plate)
@@ -335,16 +394,72 @@ def merge_endpoint(payload: MergeIn) -> dict:
             output_name=payload.output_name,
         )
         _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        result = merge_packages(
-            requests,
-            options=options,
-            output=_OUTPUT_DIR / (payload.output_name or "merged.gcode.3mf"),
-        )
+        output = _OUTPUT_DIR / (payload.output_name or "merged.gcode.3mf")
+        # 合盘是 CPU 密集操作：放线程池，避免阻塞事件循环
+        result = await asyncio.to_thread(merge_packages, requests, options=options, output=output)
     except PlateMergerError as exc:
         raise _fail(exc) from exc
 
+    plan = build_plan(infos)
+    filaments = [
+        {
+            "slot": item.slot,
+            "type": item.type,
+            "color": item.color,
+            "total_used_g": item.total_used_g,
+            "plates": list(item.plate_indexes),
+        }
+        for item in plan.filaments
+    ]
+    sources = [
+        {
+            "name": Path(item.path).name,
+            "plate": item.plate,
+            "time_s": info.prediction_s,
+            "weight_g": info.weight_g,
+        }
+        for item, info in zip(payload.items, infos)
+    ]
+
+    file_name = result.output_path.name
+    now = datetime.now(timezone.utc)
+
+    # 同名产物允许覆盖：复用记录并重置下发状态
+    artifact = (
+        await db.execute(select(MergedArtifact).where(MergedArtifact.file_name == file_name))
+    ).scalar_one_or_none()
+    if artifact is None:
+        artifact = MergedArtifact(file_name=file_name, file_path=str(result.output_path), created_at=now)
+        db.add(artifact)
+
+    artifact.file_path = str(result.output_path)
+    artifact.file_size = result.output_path.stat().st_size
+    artifact.md5 = result.md5
+    artifact.plate_count = result.plate_count
+    artifact.total_time_s = result.total_time_s
+    artifact.total_weight_g = result.total_weight_g
+    artifact.filaments_json = filaments
+    artifact.sources_json = sources
+    artifact.options_json = {
+        "preset": payload.preset,
+        "policy": payload.policy,
+        "plate_display": payload.plate_display,
+        "pre_sound": payload.pre_sound,
+        "post_sound": payload.post_sound,
+        "cooldown": payload.cooldown,
+        "wait_s": payload.wait_s,
+    }
+    artifact.status = "draft"
+    artifact.printer_id = None
+    artifact.job_id = None
+    artifact.dispatched_at = None
+    artifact.updated_at = now
+
+    await db.commit()
+
     return {
-        "output": result.output_path.name,
+        "artifact_id": str(artifact.id),
+        "output": file_name,
         "plate_count": result.plate_count,
         "gcode_bytes": result.gcode_bytes,
         "total_time_s": result.total_time_s,
@@ -428,17 +543,52 @@ def plan_endpoint(payload: PlanIn) -> dict:
     }
 
 
+async def _mark_dispatched(db: AsyncSession, payload: DispatchIn, path: Path) -> None:
+    """下发成功后更新产物记录；失败不影响下发结果返回。"""
+    try:
+        artifact = None
+        if payload.artifact_id:
+            try:
+                artifact = await db.get(MergedArtifact, UUID(payload.artifact_id))
+            except (ValueError, TypeError):
+                artifact = None
+        if artifact is None:
+            artifact = (
+                await db.execute(
+                    select(MergedArtifact).where(MergedArtifact.file_name == path.name)
+                )
+            ).scalar_one_or_none()
+        if artifact is None:
+            return
+
+        printer = (
+            await db.execute(select(Printer).where(Printer.serial == payload.serial))
+        ).scalar_one_or_none()
+
+        now = datetime.now(timezone.utc)
+        artifact.status = "dispatched"
+        artifact.printer_id = printer.id if printer else None
+        artifact.dispatched_at = now
+        artifact.updated_at = now
+        await db.commit()
+    except Exception:
+        # 记录失败不能影响「已经成功下发」这个事实
+        await db.rollback()
+
+
 @router.post("/dispatch")
-def dispatch_endpoint(payload: DispatchIn) -> dict:
+async def dispatch_endpoint(payload: DispatchIn, db: AsyncSession = Depends(get_db)) -> dict:
     """下发打印（需要可选依赖 ``paho-mqtt``）。"""
+    path = _require_3mf(payload.path)
     try:
         target = PrinterTarget(
             host=payload.host,
             access_code=payload.access_code,
             serial=payload.serial,
         )
-        result = dispatch(
-            _require_3mf(payload.path),
+        result = await asyncio.to_thread(
+            dispatch,
+            path,
             target,
             use_ams=payload.use_ams,
             ams_mapping=payload.ams_mapping,
@@ -446,5 +596,8 @@ def dispatch_endpoint(payload: DispatchIn) -> dict:
         )
     except PlateMergerError as exc:
         raise _fail(exc) from exc
+
+    if result.accepted:
+        await _mark_dispatched(db, payload, path)
 
     return {"accepted": result.accepted, "detail": result.detail, "remote_name": result.remote_name}

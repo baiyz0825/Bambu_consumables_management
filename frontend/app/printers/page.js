@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -456,10 +457,16 @@ export default function Page() {
               <CardHeader>
                 <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                   <div className="space-y-1">
-                    <CardTitle className="flex items-center gap-2">
+                    <CardTitle className="flex flex-wrap items-center gap-2">
                       <span>{p.alias || p.serial}</span>
                       <Badge variant={statusVariant(p.status)}>{p.status}</Badge>
                       <Badge variant="outline">{linkLabel(p.link_used)}</Badge>
+                      <Link
+                        href={`/printers/${p.id}`}
+                        className="rounded-full bg-[#0071e3]/10 px-2 py-0.5 text-[11px] font-medium text-[#0071e3] transition-colors hover:bg-[#0071e3]/20 dark:bg-[#0a84ff]/10 dark:text-[#0a84ff] dark:hover:bg-[#0a84ff]/20"
+                      >
+                        详情与控制 →
+                      </Link>
                     </CardTitle>
                     <CardDescription className="break-all">
                       {p.ip || "未填局域网地址"} · {p.serial} · 最后连接：{p.last_seen ? fmtTime(p.last_seen) : "-"}
