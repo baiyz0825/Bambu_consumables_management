@@ -64,8 +64,11 @@ class ThreeMfPackage:
             raise InvalidPackageError("文件不存在", detail={"path": str(resolved)})
         try:
             archive = zipfile.ZipFile(resolved)
-        except zipfile.BadZipFile as exc:
-            raise InvalidPackageError("不是合法的 ZIP / 3MF 包", detail={"path": str(resolved)}) from exc
+        except (zipfile.BadZipFile, OSError, RuntimeError, NotImplementedError) as exc:
+            # 统一收敛为工程内异常，避免底层异常类型逃逸到调用方
+            raise InvalidPackageError(
+                "无法作为 ZIP / 3MF 打开", detail={"path": str(resolved), "reason": type(exc).__name__}
+            ) from exc
         return cls(resolved, archive)
 
     # ------------------------------------------------------------------ 元信息
@@ -101,9 +104,24 @@ class ThreeMfPackage:
             raise InvalidPackageError("包内缺少成员", detail={"path": str(self._path), "member": name})
         return self._archive.read(actual)
 
-    def read_text(self, name: str, *, encoding: str = "utf-8", errors: str = "replace") -> str:
-        """读取文本成员。容错解码，避免个别非 UTF-8 字节导致整包失败。"""
-        return self.read(name).decode(encoding, errors=errors)
+    def read_text(self, name: str, *, encoding: str = "utf-8") -> str:
+        """严格解码读取文本成员。
+
+        之所以默认严格：宽松解码会把非法字节静默替换成 U+FFFD，
+        重新打包后与源文件字节不一致（md5 也会变），属于「静默产出半成品」。
+
+        :raises InvalidPackageError: 成员不是合法文本。
+        """
+        try:
+            return self.read(name).decode(encoding)
+        except UnicodeDecodeError as exc:
+            raise InvalidPackageError(
+                "成员不是合法文本", detail={"member": name, "encoding": encoding}
+            ) from exc
+
+    def read_text_lossy(self, name: str, *, encoding: str = "utf-8") -> str:
+        """宽松解码，仅用于日志与界面展示，不得用于重新打包。"""
+        return self.read(name).decode(encoding, errors="replace")
 
     # ------------------------------------------------------------------ 盘相关
     def plate_gcodes(self) -> list[tuple[int, str]]:
@@ -158,25 +176,34 @@ def write_3mf(
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
 
-    if opc_pack and CONTENT_TYPES not in members:
-        raise InvalidPackageError("OPC 打包缺少包描述文件", detail={"member": CONTENT_TYPES})
-
-    # 决定写入顺序：Content_Types 必须最先
+    # 决定写入顺序：Content_Types 必须最先，其余按名称排序以保证字节可复现
     ordered: list[tuple[str, bytes]] = []
+    skip: str | None = None
     if opc_pack:
-        ordered.append((CONTENT_TYPES, members[CONTENT_TYPES]))
-    for name, data in members.items():
-        if opc_pack and name == CONTENT_TYPES:
-            continue
-        ordered.append((name, data))
+        content_key = next((name for name in members if name.lower() == CONTENT_TYPES.lower()), None)
+        if content_key is None:
+            raise InvalidPackageError("OPC 打包缺少包描述文件", detail={"member": CONTENT_TYPES})
+        ordered.append((CONTENT_TYPES, members[content_key]))
+        skip = content_key
 
-    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
-        for name, data in ordered:
-            info = zipfile.ZipInfo(name, date_time=_FIXED_DATE_TIME)
-            info.compress_type = (
-                zipfile.ZIP_STORED if (opc_pack and name == CONTENT_TYPES) else zipfile.ZIP_DEFLATED
-            )
-            info.external_attr = 0o600 << 16
-            archive.writestr(info, data)
+    for name in sorted(members):
+        if name == skip:
+            continue
+        ordered.append((name, members[name]))
+
+    # 原子写入：先写临时文件再替换，避免中断时留下被当成成品的截断包
+    temporary = target.with_name(f".{target.name}.tmp")
+    try:
+        with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
+            for name, data in ordered:
+                info = zipfile.ZipInfo(name, date_time=_FIXED_DATE_TIME)
+                info.compress_type = (
+                    zipfile.ZIP_STORED if (opc_pack and name == CONTENT_TYPES) else zipfile.ZIP_DEFLATED
+                )
+                info.external_attr = 0o600 << 16
+                archive.writestr(info, data)
+        temporary.replace(target)
+    finally:
+        temporary.unlink(missing_ok=True)
 
     return target

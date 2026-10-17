@@ -22,8 +22,8 @@ _SLICE_INFO = """<?xml version="1.0" encoding="UTF-8"?>
     <metadata key="index" value="1"/>
     <metadata key="prediction" value="7391"/>
     <metadata key="weight" value="42.1"/>
-    <filament id="1" tray_info_idx="P25570cf" type="PETG" color="#F6DA5A" used_m="3.03" used_g="9.03"/>
-    <filament id="2" tray_info_idx="GFL99" type="PLA" color="FFFFFFFF" used_m="1.0" used_g="3.0"/>
+    <filament id="2" tray_info_idx="P25570cf" type="PETG" color="#F6DA5A" used_m="3.03" used_g="9.03"/>
+    <filament id="5" tray_info_idx="GFL99" type="PLA" color="FFFFFFFF" used_m="1.0" used_g="3.0"/>
     <object name="demo"/>
   </plate>
   <plate>
@@ -58,10 +58,11 @@ def test_parse_prediction_and_weight() -> None:
 
 
 def test_filament_id_is_converted_to_zero_based_slot() -> None:
+    """用非连续、乱序的 id 才能证明真的做了 1-based -> 0-based 转换。"""
     plate = parse_slice_info(_SLICE_INFO).plate(1)
 
     assert plate is not None
-    assert [filament.slot for filament in plate.filaments] == [0, 1]
+    assert [filament.slot for filament in plate.filaments] == [1, 4]
 
 
 def test_filament_color_is_normalized() -> None:
@@ -131,3 +132,41 @@ def test_parse_project_settings_passes_unknown_keys() -> None:
 def test_parse_project_settings_invalid() -> None:
     with pytest.raises(MetadataError):
         parse_project_settings("[]")
+
+
+def test_filament_requires_valid_id() -> None:
+    """缺少 id 属格式异常，不能静默用位置索引顶替。"""
+    xml = '<config><plate><metadata key="index" value="1"/><filament tray_info_idx="GFL99"/></plate></config>'
+
+    with pytest.raises(MetadataError):
+        parse_slice_info(xml)
+
+
+def test_filament_unknown_attributes_are_preserved() -> None:
+    """新版本新增的属性必须透传，便于后续统计 AMS 上下料时间。"""
+    xml = (
+        '<config><plate><metadata key="index" value="1"/>'
+        '<filament id="1" tray_info_idx="GFL99" total_load_time="12"/>'
+        "</plate></config>"
+    )
+
+    plate = parse_slice_info(xml).plates[0]
+
+    assert plate.filaments[0].extra == {"total_load_time": "12"}
+
+
+def test_plate_index_zero_is_not_treated_as_missing() -> None:
+    xml = '<config><plate><metadata key="index" value="0"/></plate></config>'
+
+    assert parse_slice_info(xml).plates[0].index == 0
+
+
+def test_is_seq_print_accepts_string_false() -> None:
+    parsed = parse_plate_json('{"is_seq_print":"false"}')
+
+    assert parsed.is_seq_print is False
+
+
+def test_filament_colors_must_be_list() -> None:
+    with pytest.raises(MetadataError):
+        parse_plate_json('{"filament_colors":"FF8040"}')

@@ -47,7 +47,7 @@ from .sliceinfo import (
     parse_slice_info,
 )
 from .swapcode import estimate_duration_s, render_swap_code, validate_params
-from .utils import normalize_color, to_float, to_int
+from .utils import normalize_color, to_bool, to_float, to_int
 
 __version__ = "0.1.0"
 
@@ -97,6 +97,7 @@ __all__ = [
     "normalize_color",
     "to_int",
     "to_float",
+    "to_bool",
     # 领域模型
     "StartEndPolicy",
     "FilamentRef",

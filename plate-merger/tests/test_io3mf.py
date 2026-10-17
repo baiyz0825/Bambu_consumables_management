@@ -96,3 +96,25 @@ def test_open_non_zip_raises(tmp_path) -> None:
 
     with pytest.raises(InvalidPackageError):
         ThreeMfPackage.open(bad)
+
+
+def test_member_order_does_not_affect_output_bytes(tmp_path) -> None:
+    """成员输入顺序不同也必须产出相同字节，否则 md5 会漂移。"""
+    members = _sample_members()
+    reversed_members = dict(reversed(list(members.items())))
+
+    first = write_3mf(tmp_path / "o1.3mf", members)
+    second = write_3mf(tmp_path / "o2.3mf", reversed_members)
+
+    assert first.read_bytes() == second.read_bytes()
+
+
+def test_read_text_is_strict_but_lossy_variant_works(tmp_path) -> None:
+    members = _sample_members()
+    members["Metadata/bad.txt"] = b"\xff\xfe\x00"
+    output = write_3mf(tmp_path / "bad-text.3mf", members)
+
+    with ThreeMfPackage.open(output) as package:
+        with pytest.raises(InvalidPackageError):
+            package.read_text("Metadata/bad.txt")
+        assert package.read_text_lossy("Metadata/bad.txt")

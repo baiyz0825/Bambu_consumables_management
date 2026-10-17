@@ -19,14 +19,18 @@ from xml.etree import ElementTree
 
 from .errors import MetadataError
 from .models import FilamentRef
-from .utils import normalize_color, to_float, to_int
+from .utils import normalize_color, to_bool, to_float, to_int
+
+#: ``<filament>`` 上本模块显式消费的属性；其余属性原样放入 :attr:`FilamentRef.extra`，
+#: 以兼容切片器后续新增字段（如 02.08 的 ``total_load_time``）。
+_FILAMENT_KNOWN_ATTRS = frozenset({"id", "tray_info_idx", "type", "color", "used_g", "used_m"})
 
 
 @dataclass(frozen=True)
 class SliceHeader:
     """``slice_info.config`` 的 header 段，含切片器客户端版本。"""
 
-    values: Mapping[str, str] = field(default_factory=dict)
+    values: Mapping[str, str] = field(default_factory=dict, compare=False, hash=False)
 
     @property
     def client_version(self) -> str | None:
@@ -51,7 +55,7 @@ class SlicePlate:
     prediction_s: int | None = None
     weight_g: float | None = None
     filaments: tuple[FilamentRef, ...] = ()
-    metadata: Mapping[str, str] = field(default_factory=dict)
+    metadata: Mapping[str, str] = field(default_factory=dict, compare=False, hash=False)
 
 
 @dataclass(frozen=True)
@@ -78,7 +82,7 @@ class PlateJson:
     bed_type: str | None = None
     first_extruder: int | None = None
     is_seq_print: bool = False
-    raw: Mapping[str, Any] = field(default_factory=dict)
+    raw: Mapping[str, Any] = field(default_factory=dict, compare=False, hash=False)
 
 
 def parse_slice_info(text: str) -> SliceInfo:
@@ -111,24 +115,37 @@ def parse_slice_info(text: str) -> SliceInfo:
                 metadata[key] = item.get("value") or ""
 
         filaments: list[FilamentRef] = []
-        for filament in plate_element.findall("filament"):
-            # XML 中 id 从 1 开始，G-code 中槽位从 0 开始
+        for filament_position, filament in enumerate(plate_element.findall("filament")):
+            # XML 中 id 从 1 开始，G-code 中槽位从 0 开始；缺失 id 属格式异常，不能猜
             raw_id = to_int(filament.get("id"))
-            slot = (raw_id - 1) if raw_id is not None and raw_id >= 1 else len(filaments)
+            if raw_id is None or raw_id < 1:
+                raise MetadataError(
+                    "filament 缺少合法 id",
+                    detail={
+                        "plate": position,
+                        "position": filament_position,
+                        "id": filament.get("id"),
+                    },
+                )
+            attributes = dict(filament.attrib)
+            extra = {key: value for key, value in attributes.items() if key not in _FILAMENT_KNOWN_ATTRS}
             filaments.append(
                 FilamentRef(
-                    slot=slot,
-                    tray_info_idx=filament.get("tray_info_idx") or "",
-                    type=filament.get("type") or "",
-                    color=normalize_color(filament.get("color")),
-                    used_g=to_float(filament.get("used_g")),
-                    used_m=to_float(filament.get("used_m")),
+                    slot=raw_id - 1,
+                    tray_info_idx=attributes.get("tray_info_idx") or "",
+                    type=attributes.get("type") or "",
+                    color=normalize_color(attributes.get("color")),
+                    used_g=to_float(attributes.get("used_g")),
+                    used_m=to_float(attributes.get("used_m")),
+                    extra=extra,
                 )
             )
 
+        raw_index = to_int(metadata.get("index"))
         plates.append(
             SlicePlate(
-                index=to_int(metadata.get("index")) or position,
+                # 注意不能用 `or`：盘号 0 是合法整数，会被误判为空
+                index=raw_index if raw_index is not None else position,
                 prediction_s=to_int(metadata.get("prediction")),
                 weight_g=to_float(metadata.get("weight")),
                 filaments=tuple(filaments),
@@ -146,16 +163,28 @@ def parse_plate_json(text: str) -> PlateJson:
     :raises MetadataError: JSON 非法或根节点不是对象。
     """
     data = _load_json_object(text, source="plate_N.json")
-    colors = data.get("filament_colors") or []
-    ids = data.get("filament_ids") or []
+    colors = _require_list(data.get("filament_colors"), field="filament_colors")
+    ids = _require_list(data.get("filament_ids"), field="filament_ids")
     return PlateJson(
         filament_colors=tuple(normalize_color(item) for item in colors if isinstance(item, str)),
         filament_ids=tuple(item for item in ids if isinstance(item, str)),
         bed_type=data.get("bed_type") if isinstance(data.get("bed_type"), str) else None,
         first_extruder=to_int(data.get("first_extruder")),
-        is_seq_print=bool(data.get("is_seq_print")),
+        is_seq_print=to_bool(data.get("is_seq_print")),
         raw=data,
     )
+
+
+def _require_list(value: Any, *, field: str) -> list[Any]:
+    """要求字段是数组（缺省视为空数组）。
+
+    若某版本把它写成字符串，按字符迭代会产出垃圾数据，因此这里显式报错。
+    """
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise MetadataError(f"{field} 必须是数组", detail={"field": field, "type": type(value).__name__})
+    return value
 
 
 def parse_filament_sequence(text: str) -> dict[int, tuple[int, ...]]:

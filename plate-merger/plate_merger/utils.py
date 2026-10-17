@@ -58,6 +58,21 @@ def to_float(value: Any) -> float | None:
     return None
 
 
+def to_bool(value: Any) -> bool:
+    """尽量把值转为布尔。
+
+    不能直接用 ``bool()``：字符串 ``"false"`` 在 Python 中是真值，
+    但元数据里它明确表示假。
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
 def normalize_color(value: Any) -> str:
     """把各种颜色写法统一为 ``#RRGGBB``。
 

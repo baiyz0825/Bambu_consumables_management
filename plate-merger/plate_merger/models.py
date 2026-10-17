@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -55,6 +56,9 @@ class FilamentRef:
     color: str = "#000000"
     used_g: float | None = None
     used_m: float | None = None
+    #: 切片器新增的未知属性原样保留（如 02.08 的 ``total_load_time``）。
+    #: 不参与比较与哈希，避免同一份耗材因附加字段不同而被判为不同。
+    extra: Mapping[str, str] = field(default_factory=dict, compare=False, hash=False)
 
     @property
     def identity(self) -> tuple[str, str, str]:
@@ -120,6 +124,30 @@ class SwapParams:
     approach_feedrate: int = 3000
     #: 推盘前是否先 ``G28 Y`` 归零
     home_y_before: bool = True
+
+    # ---------------------------------------------------------------- Y 轴位置序列
+    # 说明：以下坐标按 A1（行程 264）实机校准；换机型时需整体替换为对应数值，
+    # 并且必须满足「全部绝对 Y 坐标 <= y_limit」，该约束由 validate_params 强制。
+    #: 推盘前的预抖位置序列
+    y_approach_pre: tuple[float, ...] = (15.0, 150.0, 40.0)
+    #: 与 ``y_approach_pre`` 一一对应的进给
+    y_approach_pre_feeds: tuple[int, ...] = (2000, 1200, 1200)
+    #: 卸盘前的中位停靠点
+    y_park: float = 120.0
+    #: 第二次推盘前的预备位置序列
+    y_pull_pre: tuple[float, ...] = (235.0, 110.0, 200.0)
+    #: 与 ``y_pull_pre`` 一一对应的进给
+    y_pull_pre_feeds: tuple[int, ...] = (1200, 5000, 1200)
+    #: 拉盘起始位置
+    y_pull_start: float = 40.0
+    #: 拉盘起始位置的进给
+    y_pull_start_feed: int = 4000
+    #: 拉盘的越位进给
+    pull_feedrate: int = 5000
+    #: 换盘结束时的停靠位置
+    y_final: float = 120.0
+    #: 结束停靠的进给
+    y_final_feed: int = 2000
 
     # ---------------------------------------------------------------- Z 力控升降
     #: 首次下压量（负值），用于探测热床后沿与托盘高度

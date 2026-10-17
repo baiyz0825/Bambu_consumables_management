@@ -13,7 +13,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
+from types import MappingProxyType
 
 from .errors import SwapCodeError
 from .models import ApproachMode, SwapParams
@@ -49,10 +51,10 @@ FAST = replace(
     shake_dwell_ms=300,
 )
 
-#: 预设索引：ID -> 参数对象
-BUILTIN_PRESETS: dict[str, SwapParams] = {
-    preset.preset_id: preset for preset in (CONSERVATIVE, BALANCED, FAST)
-}
+#: 预设索引：ID -> 参数对象。只读代理，防止外部注册表被就地污染。
+BUILTIN_PRESETS: Mapping[str, SwapParams] = MappingProxyType(
+    {preset.preset_id: preset for preset in (CONSERVATIVE, BALANCED, FAST)}
+)
 
 
 def list_presets() -> tuple[SwapParams, ...]:
