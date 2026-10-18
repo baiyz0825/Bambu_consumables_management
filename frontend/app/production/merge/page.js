@@ -30,6 +30,7 @@ import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { NativeSelect } from "../../../components/ui/native-select";
 import { MergeAdvancedParams } from "../../../components/production/merge-advanced-params";
+import { MergeSoundEditor } from "../../../components/production/merge-sound-editor";
 
 // 后端 MergeIn 的默认预设（预设接口异常时兜底，避免发出空串）
 const DEFAULT_PRESET = "builtin:a1-conservative";
@@ -160,6 +161,9 @@ export default function Page() {
   const [postSound, setPostSound] = useState("jingle");
   const [preCustomNotes, setPreCustomNotes] = useState("");
   const [postCustomNotes, setPostCustomNotes] = useState("");
+  // 音效编辑模式：visual=音符可视化，raw=直接编辑 M1006
+  const [preSoundMode, setPreSoundMode] = useState("visual");
+  const [postSoundMode, setPostSoundMode] = useState("visual");
   const [swapOverrides, setSwapOverrides] = useState({});
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [cooldown, setCooldown] = useState("");
@@ -819,7 +823,10 @@ export default function Page() {
                       : "预设详情不可用，将使用后端默认参数。"}
                   </div>
                   <p className="text-xs leading-relaxed text-[#0071e3] dark:text-[#0a84ff]">
-                    这里调的是<strong>换料机械动作</strong>——推盘力度、Y 行程、停留时间，<strong>不是打印速度</strong>（打印速度由切片参数决定）。
+                    这里调的是<strong>换料机械动作</strong>（推盘力度、Y 行程、停留时间），与打印速度无关。
+                    <br />
+                    打印速度分两层：<strong>切片参数</strong>决定基准速度（每条 G1 的 F 值），打印机上的
+                    <strong>1–4 档</strong>是运行时倍率（M220），随时可改、不写回 G-code。
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
@@ -876,7 +883,7 @@ export default function Page() {
                   <div className="text-xs text-muted-foreground">在打印机屏幕上提示当前是第几盘。</div>
                 </div>
 
-                <div className="grid gap-2">
+                <div className={`grid gap-2 ${preSound === "custom" ? "sm:col-span-2" : ""}`}>
                   <Label htmlFor="pre-sound">换盘前音效</Label>
                   <NativeSelect id="pre-sound" value={preSound} onChange={(e) => setPreSound(e.target.value)}>
                     {AUDIO_OPTIONS.map((o) => (
@@ -886,22 +893,46 @@ export default function Page() {
                     ))}
                   </NativeSelect>
                   {preSound === "custom" ? (
-                    <>
-                      <textarea
-                        className="min-h-[84px] w-full resize-y rounded-lg border border-black/[0.1] bg-white px-3 py-2 font-mono text-xs leading-relaxed text-foreground outline-none focus-visible:border-[#0071e3] dark:border-white/15 dark:bg-white/5"
-                        value={preCustomNotes}
-                        onChange={(e) => setPreCustomNotes(e.target.value)}
-                        placeholder={CUSTOM_SOUND_PLACEHOLDER}
-                        spellCheck={false}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        每行一条 <code>M1006</code>（三音一组），只允许 M1006 指令；留空会报错。
-                      </p>
-                    </>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={preSoundMode === "visual" ? "default" : "outline"}
+                          onClick={() => setPreSoundMode("visual")}
+                        >
+                          音符编辑
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={preSoundMode === "raw" ? "default" : "outline"}
+                          onClick={() => setPreSoundMode("raw")}
+                        >
+                          原始乐谱
+                        </Button>
+                      </div>
+                      {preSoundMode === "visual" ? (
+                        <MergeSoundEditor value={preCustomNotes} onChange={setPreCustomNotes} />
+                      ) : (
+                        <>
+                          <textarea
+                            className="min-h-[84px] w-full resize-y rounded-lg border border-black/[0.1] bg-white px-3 py-2 font-mono text-xs leading-relaxed text-foreground outline-none focus-visible:border-[#0071e3] dark:border-white/15 dark:bg-white/5"
+                            value={preCustomNotes}
+                            onChange={(e) => setPreCustomNotes(e.target.value)}
+                            placeholder={CUSTOM_SOUND_PLACEHOLDER}
+                            spellCheck={false}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            每行一条 <code>M1006</code>（三音一组），只允许 M1006 指令；留空会报错。
+                          </p>
+                        </>
+                      )}
+                    </div>
                   ) : null}
                 </div>
 
-                <div className="grid gap-2">
+                <div className={`grid gap-2 ${postSound === "custom" ? "sm:col-span-2" : ""}`}>
                   <Label htmlFor="post-sound">换盘后音效</Label>
                   <NativeSelect id="post-sound" value={postSound} onChange={(e) => setPostSound(e.target.value)}>
                     {AUDIO_OPTIONS.map((o) => (
@@ -911,18 +942,42 @@ export default function Page() {
                     ))}
                   </NativeSelect>
                   {postSound === "custom" ? (
-                    <>
-                      <textarea
-                        className="min-h-[84px] w-full resize-y rounded-lg border border-black/[0.1] bg-white px-3 py-2 font-mono text-xs leading-relaxed text-foreground outline-none focus-visible:border-[#0071e3] dark:border-white/15 dark:bg-white/5"
-                        value={postCustomNotes}
-                        onChange={(e) => setPostCustomNotes(e.target.value)}
-                        placeholder={CUSTOM_SOUND_PLACEHOLDER}
-                        spellCheck={false}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        每行一条 <code>M1006</code>（三音一组），只允许 M1006 指令；留空会报错。
-                      </p>
-                    </>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={postSoundMode === "visual" ? "default" : "outline"}
+                          onClick={() => setPostSoundMode("visual")}
+                        >
+                          音符编辑
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={postSoundMode === "raw" ? "default" : "outline"}
+                          onClick={() => setPostSoundMode("raw")}
+                        >
+                          原始乐谱
+                        </Button>
+                      </div>
+                      {postSoundMode === "visual" ? (
+                        <MergeSoundEditor value={postCustomNotes} onChange={setPostCustomNotes} />
+                      ) : (
+                        <>
+                          <textarea
+                            className="min-h-[84px] w-full resize-y rounded-lg border border-black/[0.1] bg-white px-3 py-2 font-mono text-xs leading-relaxed text-foreground outline-none focus-visible:border-[#0071e3] dark:border-white/15 dark:bg-white/5"
+                            value={postCustomNotes}
+                            onChange={(e) => setPostCustomNotes(e.target.value)}
+                            placeholder={CUSTOM_SOUND_PLACEHOLDER}
+                            spellCheck={false}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            每行一条 <code>M1006</code>（三音一组），只允许 M1006 指令；留空会报错。
+                          </p>
+                        </>
+                      )}
+                    </div>
                   ) : null}
                 </div>
 
