@@ -7,6 +7,24 @@
 
 ## [未发布]
 
+### 新增：生产模块（合盘全链路）
+
+- 合盘算法库 `backend/app/plate_merger/`（20 个模块，纯标准库，168 项测试）：3MF 读写、换盘码三档预设渲染、全局槽位重映射、拼接注入、元数据重写、输出校验、层索引、版本指纹、自动排产
+- REST 13 端点：上传 / 统计 / 合盘 / 产物管理 / 下载 / 预设渲染 / 测试文件 / 排产 / 下发；产物落库 `merged_artifacts`（耗材清单、MD5、下发状态），下发后自动关联打印任务
+- 前端三页：`/production/merge` 合盘向导、`/production/gcodes` 产物库、`/settings/swap-codes` 换盘码管理
+
+### 新增：数字孪生与设备详情页
+
+- `/printers/[id]`：SSE 实时面板（温度/层数/风扇/灯/速度/HMS）、设备控制 Tab
+- 3D 孪生：A1 官方 CAD（STEP→GLB，25 部件）+ 参数化 AMS Lite；喷头/龙门随层升降、打印件随层生长（gcode 层索引驱动）、温度变色、HMS 按模块号红闪；摄影棚渐变背景 + IBL 布光
+- 设备控制 13 端点（`app/api/routers/controls.py`）：暂停/恢复/停止、速度、灯光、G-code 直发（白名单 + 温度上限）、轴移动/回零/挤出（打印中 409 拒绝）、AMS、校准
+
+### 新增：HMS 故障诊断与采集字段扩充
+
+- collector 标准化字段 11 → 41（温度/层/风扇/灯/速度/故障/换料三要素）；`HmsError`/`HmsCleared` 事件优先于状态机
+- HMS 中文码表 593 条固化到 `app/resources/hms_codes.json`（`scripts/export_hms_codes.py` 从 Studio 导出），查询接口 `/hms/meta|codes|lookup`
+- 历史回补脚本 `collector/scripts/backfill_normalized.py`（enrich 模式只补缺失键）
+
 ### 新增：耗材卷、分色统计和品牌单价
 
 - 库存和打印机托盘用耗材卷展示剩余百分比，详情可直接改剩余克数，并列出对应打印任务的消耗
