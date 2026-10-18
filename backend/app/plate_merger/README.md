@@ -5,12 +5,12 @@
 
 ## 定位
 
-本包是**纯算法库**，不依赖 FastAPI、不直接访问打印机，可独立以 CLI 使用，
-也可被 `backend/` 作为「生产」模块的能力调用。
+本包是 backend 内的**纯算法层**，不依赖 FastAPI、不直接访问打印机，可独立以 CLI 使用，
+`app/api/routers/plate_merger.py` 只做参数转换、路径校验与错误映射（适配层）。
 
-技术依据见仓库外的技术方案文档：
+技术依据见外层仓库 `docs/自动换盘完整技术方案.html`：
 
-- 合盘流程与元数据重写：`自动换盘完整技术方案.html` §4、§5、§10
+- 合盘流程与元数据重写：§4、§5、§10
 - 换盘码参数与管理：§10.4
 - 耗材全局重映射：§5.2
 - 输出校验：§10.4 校验规则
@@ -32,6 +32,13 @@ plate_merger/
 ├── metadata.py     元数据重写（单 plate / rels / 缩略图）
 ├── verifier.py     输出校验器
 ├── pipeline.py     流水线编排
+├── planner.py      自动分盘排产
+├── fingerprint.py  版本指纹探测与差异对比
+├── layers.py       G-code 层索引：layer_num → Z/XY（数字孪生喷嘴定位）
+├── audio.py        换盘音效段处理
+├── toolfile.py     工具文件处理
+├── dispatch.py     FTPS 上传 + MQTT 下发
+├── utils.py        通用工具
 └── cli.py          命令行入口
 ```
 
@@ -46,11 +53,11 @@ plate_merger/
 ## 开发
 
 ```bash
-# 运行测试（无需安装依赖）
+# 在 backend 目录下运行测试（pytest.ini 已配置 testpaths 与 pythonpath）
 python3 -m pytest
 
-# 以可编辑模式安装（供 backend 引用）
-pip install -e ".[dev]"
+# CLI 用法
+python3 -m app.plate_merger.cli merge|stats|probe|test-file|dispatch|presets ...
 ```
 
 ## 版本约定

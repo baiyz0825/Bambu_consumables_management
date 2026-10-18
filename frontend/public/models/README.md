@@ -6,13 +6,25 @@
 frontend/public/models/a1.glb
 ```
 
+## 当前内置模型
+
+仓库中的 `a1.glb` 来自 **Bambu A1 官方结构 CAD（STEP，25 个装配件）**，
+用 `cascadio` 转换为 GLB。注意官方 CAD **不含 AMS Lite**——AMS 由
+`components/printer/twin/ams-lite-model.js` 参数化几何叠加渲染（料盘颜色 /
+换料 / HMS 联动与真实模型一致）。
+
+若后续拿到比例正确的 AMS Lite 模型，用
+`backend/scripts/merge_ams_model.py` 合并进 `a1.glb`
+（自动处理米/毫米单位换算、节点变换保留），再删掉 twin-view.js 里的
+`<AmsLiteModel />` 一行即可切换。
+
 ## 推荐来源
 
 | 来源 | 说明 | 获取 |
 |---|---|---|
-| **Sketchfab — 3D printer \| Bambu Lab A1**（@scb3d） | 112.9k 三角面，基于 MakerWorld 770920 CAD 制作；面数适中，Web 直接可用 | 登录后 Download → glTF |
-| MakerWorld 770920 | 精确 STEP（±0.2mm） | 需 Bambu 账号，下载后自行转 GLB |
-| GrabCAD A1 Combo + AMS | 26 个文件，含 AMS | 需 GrabCAD 账号 |
+| MakerWorld 770920 | 精确 STEP（±0.2mm），当前内置模型来源 | 需 Bambu 账号 |
+| GrabCAD「Bambu Lab AMS Lite」 | AMS Lite 单独 CAD（STEP/IGES） | 需 GrabCAD 账号，页面有 CloudFront 反爬 |
+| GrabCAD A1 Combo + AMS Module | 26 个文件，含 AMS | 需 GrabCAD 账号 |
 
 > Meshy / Tripo 等 AI 生成的模型**不要用**：结构会错乱，且无法拆件驱动。
 
