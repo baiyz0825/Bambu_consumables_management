@@ -83,15 +83,20 @@ def build_tool_file(
     newline = detect_newline(blocks.preamble)
     preamble = neutralize_heating(blocks.preamble, newline=newline)
 
-    swap_block = build_swap_block(
-        effective,
-        plate_index=1,
-        total_plates=cycles + 1,
-        newline=newline,
+    # 每个换盘块对应「第 idx+1 盘结束 → 即将进入第 idx+2 盘」，
+    # M117 盘号随块递增，实机验证时屏幕进度与实际换盘次数一致
+    swap_blocks = "".join(
+        build_swap_block(
+            effective,
+            plate_index=idx + 1,
+            total_plates=cycles + 1,
+            newline=newline,
+        )
+        for idx in range(cycles)
     )
 
     # 只保留一个 END 标记，结构才合法
-    text = f"{preamble}{swap_block * cycles}{blocks.executable_end_marker}{blocks.epilogue}"
+    text = f"{preamble}{swap_blocks}{blocks.executable_end_marker}{blocks.epilogue}"
 
     members["Metadata/slice_info.config"] = rewrite_slice_info(
         members["Metadata/slice_info.config"].decode("utf-8"),
