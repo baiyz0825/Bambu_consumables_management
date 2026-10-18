@@ -27,6 +27,7 @@ from .metadata import (
 )
 from .models import MergeOptions
 from .swapcode import estimate_duration_s
+from .thumbnail import render_swap_thumbnail
 from .verifier import verify_package
 
 #: 等待升温指令：会阻塞，必须整体删除
@@ -35,6 +36,42 @@ _WAIT_HEAT = re.compile(r"^M(109|190)\b")
 _SET_HEAT = re.compile(r"^(M104|M140)\s+S\d+")
 #: CONFIG 段里的耗材声明注释：Studio 会据此要求耗材映射，测试文件必须清掉
 _FILAMENT_META = re.compile(r"^;\s*(?:default_)?filament_\w+\s*=")
+
+#: 空的 3D 模型（合法 3MF core XML、无任何几何）：保留引用完整性，去掉模板几何
+_EMPTY_MODEL_XML = (
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+    '<model unit="millimeter" xml:lang="en-US" '
+    'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n'
+    ' <metadata name="Application">consumables-management swap-test</metadata>\n'
+    " <resources/>\n <build/>\n</model>\n"
+)
+
+#: 包级引用：只指向空模型与文件缩略图
+_PACKAGE_RELS_XML = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    '<Relationship Target="/3D/3dmodel.model" Id="rel-1" '
+    'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>'
+    '<Relationship Target="{thumbnail_target}" Id="rel-2" '
+    'Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"/>'
+    "</Relationships>"
+)
+
+#: model_settings 引用：只指向合并后的 gcode
+_MODEL_SETTINGS_RELS_XML = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    '<Relationship Target="/{gcode_member}" Id="rel-1" '
+    'Type="http://schemas.bambulab.com/package/2021/gcode"/>'
+    "</Relationships>"
+)
+
+#: 空的盘信息：无对象、无耗材
+_EMPTY_PLATE_JSON = (
+    '{"bbox_all":[0,0,0,0],"bbox_objects":[],"bed_type":"textured_plate",'
+    '"filament_colors":[],"filament_ids":[],"first_extruder":0,'
+    '"is_seq_print":false,"nozzle_diameter":0.4000000059604645,"version":2}'
+)
 
 
 def neutralize_heating(text: str, *, newline: str = "\n") -> str:
@@ -132,6 +169,30 @@ def build_tool_file(
     members.pop("Metadata/filament_sequence.json", None)
     for name in [n for n in members if n.startswith("Auxiliaries/")]:
         members.pop(name, None)
+
+    # —— 彻底纯化：不掺杂任何模板的模型/图片/多盘引用 ——
+    # 1) 移除模板的所有预览图与切割信息（预览换成本模块生成的文字缩略图）
+    for name in [
+        n
+        for n in members
+        if n.endswith(".png") or n == "Metadata/cut_information.xml"
+    ]:
+        members.pop(name, None)
+    thumbnail = render_swap_thumbnail(cycles)
+    members["Metadata/plate_1.png"] = thumbnail
+    members["Metadata/plate_1_small.png"] = render_swap_thumbnail(cycles, size=128)
+
+    # 2) 3D 模型替换为空资源（保留成员与引用完整性，去掉模板几何）；
+    #    plate_1.json 清空对象列表，Studio 不再显示模板里的对象
+    members["3D/3dmodel.model"] = _EMPTY_MODEL_XML.encode("utf-8")
+    members["_rels/.rels"] = _PACKAGE_RELS_XML.format(thumbnail_target="/Auxiliaries/.thumbnails/thumbnail_3mf.png").encode("utf-8")
+    members["Auxiliaries/.thumbnails/thumbnail_3mf.png"] = thumbnail
+    members["Metadata/_rels/model_settings.config.rels"] = _MODEL_SETTINGS_RELS_XML.format(
+        gcode_member=MERGED_GCODE_MEMBER
+    ).encode("utf-8")
+    plate_json_key = next((n for n in members if n.endswith("plate_1.json")), None)
+    if plate_json_key:
+        members[plate_json_key] = _EMPTY_PLATE_JSON
 
     gcode_bytes = text.encode("utf-8")
     members[MERGED_GCODE_MEMBER] = gcode_bytes
