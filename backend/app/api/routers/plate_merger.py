@@ -69,6 +69,8 @@ _PM_DATA_DIR = os.environ.get("PLATE_MERGER_DATA_DIR")
 _OUTPUT_DIR = Path(_PM_DATA_DIR, "outputs") if _PM_DATA_DIR else Path(tempfile.gettempdir()) / "plate-merger"
 #: 上传的原始 3MF；API 只允许从这里读取输入，杜绝任意路径读取
 _UPLOAD_DIR = Path(_PM_DATA_DIR, "uploads") if _PM_DATA_DIR else Path(tempfile.gettempdir()) / "plate-merger-uploads"
+#: 内置换盘测试模板（最小合法壳，前端无需上传即可生成测试文件）
+_TEMPLATE_FILE = Path(__file__).resolve().parents[2] / "resources" / "swap-test-template.gcode.3mf"
 #: 单文件上限（3MF 常见 10~200MB）
 _MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 
@@ -143,11 +145,17 @@ class DiffIn(BaseModel):
 
 
 class TestFileIn(BaseModel):
-    """测试文件请求。"""
+    """测试文件请求。
 
-    template: str
+    ``template`` 省略时使用内置最小模板（`app/resources/swap-test-template.gcode.3mf`），
+    前端无需先上传文件即可生成换盘测试。
+    """
+
+    template: str | None = None
     cycles: int = Field(default=1, ge=1, le=50)
     preset: str = "builtin:a1-conservative"
+    #: 每次换盘后的静默等待秒数（之后播放提示音）
+    wait_s: int = Field(default=5, ge=0, le=300)
 
 
 class PlanItemIn(BaseModel):
@@ -636,19 +644,32 @@ def probe_diff(payload: DiffIn) -> dict:
 
 @router.post("/test-file")
 def test_file_endpoint(payload: TestFileIn) -> dict:
-    """生成不加热、不耗料的换盘测试文件。"""
+    """生成不加热、不耗料的换盘测试文件（每次换盘后等待 → 播放滴滴滴）。"""
     try:
-        options = MergeOptions(swap_params=get_preset(payload.preset))
+        options = MergeOptions(
+            swap_params=get_preset(payload.preset),
+            post_change_sound=AudioMode.SHORT,
+            wait_after_swap_s=payload.wait_s,
+            plate_display=PlateDisplay.M117,
+        )
         _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        if payload.template:
+            template = _require_3mf(payload.template)
+        else:
+            template = _TEMPLATE_FILE
         path = build_tool_file(
-            _require_3mf(payload.template),
+            template,
             cycles=payload.cycles,
             options=options,
-            output=_OUTPUT_DIR / f"swap-test-{payload.cycles}.gcode.3mf",
+            output=_OUTPUT_DIR / f"swap-test-{payload.cycles}p.gcode.3mf",
         )
     except PlateMergerError as exc:
         raise _fail(exc) from exc
-    return {"output": path.name, "cycles": payload.cycles}
+    return {
+        "output": path.name,
+        "cycles": payload.cycles,
+        "size": path.stat().st_size,
+    }
 
 
 @router.post("/plan")

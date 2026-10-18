@@ -146,11 +146,16 @@ export function probeDiff(base, current) {
   });
 }
 
-/** 生成不加热、不耗料的换盘测试文件 */
-export function makeTestFile(templatePath, cycles = 1, preset = "builtin:a1-conservative") {
+/**
+ * 生成不加热、不耗料的换盘测试文件。
+ * templatePath 省略时后端用内置最小模板（无需先上传文件）。
+ */
+export function makeTestFile(templatePath, cycles = 1, preset = "builtin:a1-conservative", waitS = 5) {
+  const body = { cycles, preset, wait_s: waitS };
+  if (templatePath) body.template = templatePath;
   return fetchJson(`${PM}/test-file`, {
     method: "POST",
-    body: JSON.stringify({ template: templatePath, cycles, preset }),
+    body: JSON.stringify(body),
     timeoutMs: 120000
   });
 }

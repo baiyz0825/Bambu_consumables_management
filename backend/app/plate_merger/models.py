@@ -242,6 +242,10 @@ class MergeOptions:
     #: 换盘码起止标记（用于去重与结构校验）
     swap_start_flag: str = ";start change plate"
     swap_end_flag: str = ";end change plate"
+    #: 是否把各盘轨迹里的 M73 进度重映射到全局刻度（默认开）。
+    #: 开启后屏幕进度条全程单向 0→100%（每盘占 100/N），剩余时间为全盘总剩余；
+    #: 关闭则保留切片器原始行为（进度按盘循环 0→100%）。
+    remap_progress: bool = True
     #: 输出文件名，None 时由流水线生成
     output_name: str | None = None
 

@@ -225,6 +225,7 @@ def merge(
             index=info.plate.index,
             blocks=GcodeBlocks.parse(text),
             mapping=plan.mapping_for(info.plate.index),
+            prediction_s=info.plate.prediction_s,
         )
         for info, text in zip(infos, gcode_texts)
     ]

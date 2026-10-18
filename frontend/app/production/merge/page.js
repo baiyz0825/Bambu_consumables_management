@@ -11,6 +11,7 @@ import {
   formatBytes,
   formatDuration,
   listPresets,
+  makeTestFile,
   merge,
   upload3mf
 } from "../../../lib/plate-merger-api";
@@ -164,6 +165,12 @@ export default function Page() {
   // 音效编辑模式：visual=音符可视化，raw=直接编辑 M1006
   const [preSoundMode, setPreSoundMode] = useState("visual");
   const [postSoundMode, setPostSoundMode] = useState("visual");
+
+  // 换盘测试文件（不加热、不耗料，验证换盘动作与提示音时序）
+  const [testCycles, setTestCycles] = useState("8");
+  const [testWait, setTestWait] = useState("5");
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
   const [swapOverrides, setSwapOverrides] = useState({});
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [cooldown, setCooldown] = useState("");
@@ -417,6 +424,31 @@ export default function Page() {
       toast.error(`合盘失败：${errorText(e)}`);
     } finally {
       setMerging(false);
+    }
+  }
+
+  /** 生成纯换盘测试文件：不加热、不耗料，每次换盘后等待再播放滴滴滴。 */
+  async function handleMakeTestFile() {
+    const cycles = Number(String(testCycles).trim());
+    if (!Number.isInteger(cycles) || cycles < 1 || cycles > 50) {
+      toast.error("换盘次数需为 1~50 之间的整数");
+      return;
+    }
+    const wait = Number(String(testWait).trim());
+    if (!Number.isFinite(wait) || wait < 0 || wait > 300) {
+      toast.error("等待秒数需为 0~300 之间的数字");
+      return;
+    }
+
+    setTesting(true);
+    try {
+      const res = await makeTestFile(null, cycles, presetId || DEFAULT_PRESET, Math.round(wait));
+      setTestResult(res || null);
+      toast.success(`换盘测试文件已生成：${cycles} 次换盘`);
+    } catch (e) {
+      toast.error(`生成失败：${errorText(e)}`);
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -1045,6 +1077,79 @@ export default function Page() {
               >
                 {merging ? "生成中…" : "生成合盘文件"}
               </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">换盘测试文件（不加热 · 不耗料）</CardTitle>
+              <CardDescription>
+                生成一个纯换盘动作的测试文件：只执行换盘机械动作，不升温、不出料、无打印轨迹。
+                每次换盘后静默等待，再播放滴滴滴提示音；屏幕显示盘号与进度。
+                首次使用某档预设前，建议先空机跑一遍确认动作安全。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="test-cycles">换盘次数（1~50）</Label>
+                  <Input
+                    id="test-cycles"
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={testCycles}
+                    onChange={(e) => setTestCycles(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="test-wait">换盘后等待秒数</Label>
+                  <Input
+                    id="test-wait"
+                    type="number"
+                    min={0}
+                    max={300}
+                    value={testWait}
+                    onChange={(e) => setTestWait(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                使用上方「合盘配置」里选中的换盘码预设（当前：
+                {presets.find((p) => p.id === presetId)?.name || "默认保守档"}）。
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full"
+                onClick={handleMakeTestFile}
+                disabled={testing}
+              >
+                {testing ? "生成中…" : "生成换盘测试文件"}
+              </Button>
+
+              {testResult ? (
+                <div className="rounded-xl border border-[#0071e3]/30 bg-[#0071e3]/5 p-3 dark:border-[#0a84ff]/30 dark:bg-[#0a84ff]/5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="break-all font-mono text-xs text-foreground">{testResult.output}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {testResult.cycles} 次换盘{testResult.size ? ` · ${formatBytes(testResult.size)}` : ""}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button type="button" size="sm" onClick={() => downloadOutput(testResult.output)}>
+                        下载
+                      </Button>
+                      <Link href="/production/gcodes">
+                        <Button type="button" size="sm" variant="ghost">
+                          去产物库
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 

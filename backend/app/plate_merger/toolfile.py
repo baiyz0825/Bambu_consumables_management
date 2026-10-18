@@ -26,20 +26,27 @@ from .metadata import (
     strip_extra_plate_assets,
 )
 from .models import MergeOptions
+from .swapcode import estimate_duration_s
 from .verifier import verify_package
 
 #: 等待升温指令：会阻塞，必须整体删除
 _WAIT_HEAT = re.compile(r"^M(109|190)\b")
 #: 设置温度指令：改为 0
 _SET_HEAT = re.compile(r"^(M104|M140)\s+S\d+")
+#: CONFIG 段里的耗材声明注释：Studio 会据此要求耗材映射，测试文件必须清掉
+_FILAMENT_META = re.compile(r"^;\s*(?:default_)?filament_\w+\s*=")
 
 
 def neutralize_heating(text: str, *, newline: str = "\n") -> str:
-    """把加热目标置 0 并删除等待升温指令。"""
+    """把加热目标置 0、删除等待升温指令，并剥离耗材声明注释。"""
     output: list[str] = []
     for line in text.splitlines(keepends=True):
         code = line.strip()
         if not code or code.startswith(";"):
+            # 耗材声明（; filament_colour = ... 等）会让 Studio 认为切片
+            # 依赖多种耗材并弹「未映射」警告——纯换盘测试不带耗材
+            if _FILAMENT_META.match(code):
+                continue
             output.append(line)
             continue
         if _WAIT_HEAT.match(code):
@@ -84,16 +91,21 @@ def build_tool_file(
     preamble = neutralize_heating(blocks.preamble, newline=newline)
 
     # 每个换盘块对应「第 idx+1 盘结束 → 即将进入第 idx+2 盘」，
-    # M117 盘号随块递增，实机验证时屏幕进度与实际换盘次数一致
-    swap_blocks = "".join(
-        build_swap_block(
+    # M117 盘号随块递增，实机验证时屏幕进度与实际换盘次数一致。
+    # 块尾注入 M73：屏幕进度条按换盘次数均分推进（打印主体被丢弃，
+    # 若不注入，进度条会一直停在 0%），R 按「剩余换盘次数 × 单次时长」估算。
+    swap_total_s = estimate_duration_s(effective.swap_params) + max(effective.wait_after_swap_s, 0)
+    swap_blocks = ""
+    for idx in range(cycles):
+        block = build_swap_block(
             effective,
             plate_index=idx + 1,
             total_plates=cycles + 1,
             newline=newline,
         )
-        for idx in range(cycles)
-    )
+        pct = round((idx + 1) / (cycles + 1) * 100)
+        remain_min = max(round((cycles - idx - 1) * swap_total_s / 60), 0)
+        swap_blocks += block + f"M73 P{pct} R{remain_min}{newline}"
 
     # 只保留一个 END 标记，结构才合法
     text = f"{preamble}{swap_blocks}{blocks.executable_end_marker}{blocks.epilogue}"
@@ -114,6 +126,12 @@ def build_tool_file(
         ).encode("utf-8")
 
     strip_extra_plate_assets(members, keep=1)
+
+    # 纯换盘测试不带耗材与模板残留：多盘耗材序列、辅助图片全部移除，
+    # 否则 Studio 会按残留信息弹「耗材未映射」警告或显示无关预览图
+    members.pop("Metadata/filament_sequence.json", None)
+    for name in [n for n in members if n.startswith("Auxiliaries/")]:
+        members.pop(name, None)
 
     gcode_bytes = text.encode("utf-8")
     members[MERGED_GCODE_MEMBER] = gcode_bytes
