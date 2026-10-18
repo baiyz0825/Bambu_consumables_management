@@ -3,12 +3,13 @@
 /**
  * Bambu Lab A1 参数化数字孪生模型。
  *
- * 为什么不用 GLB：
- * 1. 官方没有整机模型，社区 STEP 需要在 Blender 里手工拆件并重设原点；
- * 2. 孪生要驱动 5 个独立部件（龙门/热床/喷头/料卷/灯），程序化建模天然可动；
- * 3. **坐标正确性**：按 A1 真实规格建模，喷嘴 XYZ 才能与 G-code 层索引对上。
+ * 结构依据（对照实机照片）：
+ * - A1 是**双立柱门式（gantry）**结构，不是 A1 mini 那种单柱悬臂；
+ * - 两根立柱在左右靠后，顶部横梁连接，横梁整体沿 Z 升降，喷头沿横梁走 X；
+ * - 热床在底座上方前后移动（Y）；
+ * - AMS lite 是**独立落地支架**，4 个料盘竖直悬挂、2 列 × 2 行，每个料盘上方有进料器。
  *
- * 坐标约定（单位 mm）：
+ * 坐标约定（mm）：
  *   three.x = 打印 X（左右）
  *   three.y = 打印 Z（高度，y=0 为床面）
  *   three.z = -打印 Y（热床前后；+z 朝向观察者）
@@ -21,22 +22,38 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
 const PRINT_VOLUME = 256;
-const BASE = { w: 385, h: 70, d: 410 };
-const BED = { w: 256, h: 8, d: 256 };
-const COLUMN = { w: 96, h: 430, d: 74 };
-const BEAM = { w: 384, h: 42, d: 46 };
-const TOOL = { w: 76, h: 96, d: 62 };
-const COIL = { radius: 92, thickness: 44 };
-//: Bambu 的床坐标原点在床角（0..256），模型以床中心为原点，需要平移
+
+const BASE = { w: 385, h: 62, d: 410 };
+const POST = { w: 52, h: 420, d: 52, x: 168, z: -175 };
+const BEAM = { w: 384, h: 34, d: 40 };
+const BED_FRAME = { w: 300, h: 14, d: 300 };
+const BED_PLATE = { w: 256, h: 8, d: 256 };
+const TOOL = { w: 74, h: 92, d: 56 };
+
+//: 料盘（AMS lite）：盘片用带孔环片，正面能看到线材，而不是实心圆
+const COIL = { outer: 90, wire: 72, thickness: 44 };
+
+//: 横梁中心相对当前层高的偏移量，使喷嘴尖端恰好落在层高上。
+//: 推导：喷头中心 = 层高 + TOOL.h/2 + 30（喷嘴伸出 30），
+//: 横梁 = 喷头中心 + TOOL.h/2 + BEAM.h/2 = 层高 + 92 + 17 + 30 = 层高 + 139
+const GANTRY_OFFSET = TOOL.h + BEAM.h / 2 + 30;
+
+//: Bambu 的床坐标原点在床角（0..256），模型以床中心为原点
 const BED_CENTER = 128;
 
 const COLORS = {
-  frame: "#2b2f36",
-  frameEdge: "#3b424b",
-  bedFrame: "#1a1d22",
-  bedPlate: "#4a5058",
-  tool: "#1e2228",
-  accent: "#0071e3"
+  base: "#eceef2",
+  post: "#c6ccd4",
+  beam: "#cfd4db",
+  bedFrame: "#2a2d32",
+  bedPlate: "#23262b",
+  tool: "#f1f3f6",
+  toolDark: "#3c4149",
+  screen: "#0a0c0f",
+  accent: "#0071e3",
+  amsFrame: "#c3c8d0",
+  coilSide: "#4b5058",
+  metal: "#9aa1aa"
 };
 
 const COLD = new THREE.Color("#5d6470");
@@ -79,13 +96,12 @@ export function A1Model({ state, layerIndex = null }) {
   const nozzleMatRef = useRef(null);
   const bedMatRef = useRef(null);
   const frameMatRef = useRef(null);
-  const columnMatRef = useRef(null);
+  const columnMats = useRef([]);
   const beamMatRef = useRef(null);
   const toolMatRef = useRef(null);
   const coilRefs = useRef([]);
   const partHRef = useRef(0);
 
-  // 每帧只写这几个目标值，再对实际位置做阻尼跟随，避免数据 1s 一跳造成跳帧
   const targets = useMemo(
     () => ({ toolY: 40, toolX: 0, bedZ: 0, partH: 0, fan: 0, lamp: 0 }),
     []
@@ -96,12 +112,16 @@ export function A1Model({ state, layerIndex = null }) {
   // 料卷原始自发光色：故障脉冲结束后要能恢复
   const coilBase = trayColors.map((color) => new THREE.Color(color));
 
-  // 打印件颜色跟随当前使用的槽位
   const trayNowNum = num(state?.tray_now);
   const activeTray = trayNowNum !== null && trayNowNum >= 0 && trayNowNum < 4 ? trayNowNum : 0;
 
   // 层索引：rows[n] = [z, xMin, xMax, yMin, yMax]
   const layerRows = layerIndex?.layers ?? null;
+
+  // 打印件占地用层索引的总体 bbox，比固定方块更接近真实投影
+  const bbox = layerIndex?.bbox;
+  const partW = bbox ? Math.max(40, Math.min(150, bbox[1] - bbox[0])) : 140;
+  const partD = bbox ? Math.max(40, Math.min(150, bbox[3] - bbox[2])) : 140;
 
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05);
@@ -117,7 +137,6 @@ export function A1Model({ state, layerIndex = null }) {
 
     // —— 目标位置 ——
     if (layerRows && layerRows.length > 0 && layer !== null) {
-      // 有层索引：用真实 XYZ（协议本身不回传坐标，这是从 G-code 反推的）
       const index = Math.max(1, Math.min(layerRows.length, Math.round(layer)));
       const row = layerRows[index - 1];
       const xMin = row[1];
@@ -131,10 +150,9 @@ export function A1Model({ state, layerIndex = null }) {
 
       targets.toolX = printX - BED_CENTER;
       targets.bedZ = -(printY - BED_CENTER);
-      targets.toolY = row[0] + 6;
+      targets.toolY = row[0];
       targets.partH = row[0];
     } else {
-      // 无层索引：退回摆动近似
       targets.toolY = 10 + clamped * (PRINT_VOLUME - 30);
       targets.toolX = running ? Math.sin(t * 1.15) * 82 : 0;
       targets.bedZ = running ? Math.sin(t * 0.72) * 54 : 0;
@@ -143,7 +161,13 @@ export function A1Model({ state, layerIndex = null }) {
 
     // —— 阻尼跟随 ——
     if (gantryRef.current) {
-      gantryRef.current.position.y = damp(gantryRef.current.position.y, targets.toolY, 6, dt);
+      // 横梁中心比喷嘴尖端高 GANTRY_OFFSET，保证喷嘴落在当前层高
+      gantryRef.current.position.y = damp(
+        gantryRef.current.position.y,
+        targets.toolY + GANTRY_OFFSET,
+        6,
+        dt
+      );
     }
     if (toolRef.current) {
       toolRef.current.position.x = damp(toolRef.current.position.x, targets.toolX, 7, dt);
@@ -163,14 +187,14 @@ export function A1Model({ state, layerIndex = null }) {
     const nozzleT = num(state?.nozzle_temper) ?? 0;
     const bedT = num(state?.bed_temper) ?? 0;
     const nozzleHeat = heatColor(nozzleT).clone();
-    const bedHeat = heatColor(bedT * 1.6).clone();
+    // 热床是黑色 PEI 板，60℃ 时视觉上只该"微微发暖"，不要渲染成通红
+    const bedHeat = heatColor(bedT * 0.85).clone();
     if (nozzleMatRef.current) {
       nozzleMatRef.current.color.copy(nozzleHeat);
-      nozzleMatRef.current.emissive.copy(nozzleHeat).multiplyScalar(0.25);
+      nozzleMatRef.current.emissive.copy(nozzleHeat).multiplyScalar(0.3);
     }
     if (bedMatRef.current) {
-      bedMatRef.current.color.copy(bedHeat);
-      bedMatRef.current.emissive.copy(bedHeat).multiplyScalar(0.12);
+      bedMatRef.current.emissive.copy(bedHeat).multiplyScalar(0.1);
     }
 
     // —— 风扇 ——
@@ -182,7 +206,7 @@ export function A1Model({ state, layerIndex = null }) {
 
     // —— 腔灯 ——
     const lightOn = state?.lights?.chamber_light === "on";
-    targets.lamp = lightOn ? 1.6 : 0;
+    targets.lamp = lightOn ? 1.8 : 0;
     if (lampRef.current) {
       lampRef.current.intensity = damp(lampRef.current.intensity, targets.lamp, 8, dt);
     }
@@ -193,152 +217,256 @@ export function A1Model({ state, layerIndex = null }) {
     const modules = new Set(hmsList.map((item) => String(item?.module ?? "").toUpperCase()));
     const known = ["03", "05", "07"];
     const hasKnown = known.some((code) => modules.has(code));
-    // 认不出模块号时退回整机脉冲，而不是什么都不亮
     const allOn = hmsList.length > 0 && !hasKnown;
-    const pulse = hmsList.length > 0 ? (Math.sin(t * 5) * 0.5 + 0.5) * 0.75 : 0;
+    const pulse = hmsList.length > 0 ? (Math.sin(t * 5) * 0.5 + 0.5) * 0.8 : 0;
 
     const paint = (material, active) => {
       if (!material) return;
       material.emissive.setRGB(active ? pulse : 0, 0, 0);
     };
 
-    paint(frameMatRef.current, allOn || modules.has("05")); // 底座 = 主板
-    paint(columnMatRef.current, allOn || modules.has("03")); // 立柱 = 运动系统
-    paint(beamMatRef.current, allOn || modules.has("03")); // 横梁 = 运动系统
+    paint(frameMatRef.current, allOn || modules.has("05"));
+    columnMats.current.forEach((material) => paint(material, allOn || modules.has("03")));
+    paint(beamMatRef.current, allOn || modules.has("03"));
     paint(toolMatRef.current, allOn || modules.has("03") || modules.has("05"));
-    paint(bedMatRef.current, allOn || modules.has("03")); // 热床 = 运动系统（覆盖温度色，故障优先）
 
-    // —— 换料 / AMS 故障：料卷高亮 ——
-    const target = num(state?.tray_tar);
     const amsFault = allOn || modules.has("07");
     coilRefs.current.forEach((mat, index) => {
       if (!mat) return;
-      const active = target !== null && target === index;
+      const active = num(state?.tray_tar) === index;
       if (amsFault) {
         mat.emissive.setRGB(pulse, 0, 0);
         mat.emissiveIntensity = 1;
       } else {
         mat.emissive.copy(coilBase[index]);
-        mat.emissiveIntensity = active ? 0.45 + Math.sin(t * 6) * 0.25 : 0.05;
+        mat.emissiveIntensity = active ? 0.5 + Math.sin(t * 6) * 0.3 : 0.12;
       }
     });
   });
 
+  // AMS lite 4 个料盘：2 行 × 2 列，纵向拉开到盘径的 1.3 倍，避免视角上叠成一团
+  const coilPositions = [
+    [258, -118],
+    [258, 118],
+    [100, -118],
+    [100, 118]
+  ];
+
   return (
     <group position={[0, 0, 0]}>
-      {/* 底座 */}
-      <mesh position={[0, -(BASE.h / 2) - BED.h, 0]} castShadow receiveShadow>
+      {/* ============ 底座 ============ */}
+      <mesh position={[0, -22 - BASE.h / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[BASE.w, BASE.h, BASE.d]} />
-        <meshStandardMaterial ref={frameMatRef} color={COLORS.frame} metalness={0.35} roughness={0.62} />
+        <meshStandardMaterial ref={frameMatRef} color={COLORS.base} metalness={0.15} roughness={0.55} />
       </mesh>
 
-      {/* 底座前沿装饰条 */}
-      <mesh position={[0, -BED.h - BASE.h + 6, BASE.d / 2 + 1]}>
-        <boxGeometry args={[BASE.w * 0.82, 10, 6]} />
-        <meshStandardMaterial color={COLORS.accent} emissive={COLORS.accent} emissiveIntensity={0.5} />
+      {/* 底座前沿蓝色饰条 */}
+      <mesh position={[0, -22 - BASE.h + 12, BASE.d / 2 + 1]}>
+        <boxGeometry args={[BASE.w * 0.86, 7, 4]} />
+        <meshStandardMaterial color={COLORS.accent} emissive={COLORS.accent} emissiveIntensity={0.55} />
       </mesh>
 
-      {/* Z 立柱（A1 为单立柱悬臂结构） */}
-      <mesh position={[0, COLUMN.h / 2 - BED.h, -(BASE.d / 2) + 30]} castShadow>
-        <boxGeometry args={[COLUMN.w, COLUMN.h, COLUMN.d]} />
-        <meshStandardMaterial ref={columnMatRef} color={COLORS.frameEdge} metalness={0.4} roughness={0.55} />
+      {/* 屏幕（右前角，倾斜） */}
+      <group position={[118, -8, 200]} rotation={[-0.42, 0, 0]}>
+        <mesh castShadow>
+          <boxGeometry args={[74, 52, 9]} />
+          <meshStandardMaterial color="#d5d9df" metalness={0.2} roughness={0.5} />
+        </mesh>
+        <mesh position={[0, 0, 5]}>
+          <boxGeometry args={[64, 42, 1.5]} />
+          <meshStandardMaterial color={COLORS.screen} emissive="#1d3a5c" emissiveIntensity={0.9} />
+        </mesh>
+      </group>
+
+      {/* ============ 双立柱（门式结构） ============ */}
+      {[-1, 1].map((side) => (
+        <mesh key={side} position={[side * POST.x, -22 + POST.h / 2, POST.z]} castShadow>
+          <boxGeometry args={[POST.w, POST.h, POST.d]} />
+          <meshStandardMaterial
+            ref={(el) => {
+              columnMats.current[side === -1 ? 0 : 1] = el;
+            }}
+            color={COLORS.post}
+            metalness={0.45}
+            roughness={0.38}
+          />
+        </mesh>
+      ))}
+
+      {/* 立柱顶部黑色角件 */}
+      {[-1, 1].map((side) => (
+        <mesh key={`cap-${side}`} position={[side * POST.x, 396, POST.z]}>
+          <boxGeometry args={[POST.w + 8, 18, POST.d + 8]} />
+          <meshStandardMaterial color="#2c3037" metalness={0.3} roughness={0.6} />
+        </mesh>
+      ))}
+
+      {/* 顶部固定连接梁（结构件，不随 Z 移动；比可动横梁更细更深，避免视觉混淆） */}
+      <mesh position={[0, 390, POST.z]} castShadow>
+        <boxGeometry args={[BEAM.w + 8, 16, BEAM.d + 4]} />
+        <meshStandardMaterial color="#a9b0b9" metalness={0.6} roughness={0.4} />
       </mesh>
 
-      {/* 龙门横梁（随打印层高上下移动） */}
-      <group ref={gantryRef} position={[0, 40, -(BASE.d / 2) + 62]}>
+      {/* ============ 龙门（随层高升降） ============ */}
+      <group ref={gantryRef} position={[0, 40 + GANTRY_OFFSET, POST.z]}>
+        {/* X 轴横梁 */}
         <mesh castShadow>
           <boxGeometry args={[BEAM.w, BEAM.h, BEAM.d]} />
-          <meshStandardMaterial ref={beamMatRef} color={COLORS.frameEdge} metalness={0.45} roughness={0.5} />
+          <meshStandardMaterial ref={beamMatRef} color={COLORS.beam} metalness={0.5} roughness={0.32} />
         </mesh>
 
-        {/* 喷头组件（沿横梁左右移动） */}
-        <group ref={toolRef} position={[0, 0, 18]}>
+        {/* 横梁上的导轨 */}
+        <mesh position={[0, -BEAM.h / 2 - 2, 2]}>
+          <boxGeometry args={[BEAM.w - 30, 6, 12]} />
+          <meshStandardMaterial color={COLORS.metal} metalness={0.75} roughness={0.25} />
+        </mesh>
+
+        {/* 喷头组件（沿横梁走 X，向前伸出） */}
+        <group ref={toolRef} position={[0, -BEAM.h / 2 - TOOL.h / 2, 44]}>
           <mesh castShadow>
             <boxGeometry args={[TOOL.w, TOOL.h, TOOL.d]} />
-            <meshStandardMaterial ref={toolMatRef} color={COLORS.tool} metalness={0.3} roughness={0.65} />
+            <meshStandardMaterial ref={toolMatRef} color={COLORS.tool} metalness={0.2} roughness={0.5} />
+          </mesh>
+
+          {/* 喷头前脸深色装饰 */}
+          <mesh position={[0, 6, TOOL.d / 2 + 1]}>
+            <boxGeometry args={[52, 44, 4]} />
+            <meshStandardMaterial color={COLORS.toolDark} metalness={0.3} roughness={0.6} />
           </mesh>
 
           {/* 散热风扇 */}
-          <group position={[0, 6, TOOL.d / 2 + 3]}>
+          <group position={[0, 10, TOOL.d / 2 + 5]}>
             <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[20, 20, 8, 20]} />
-              <meshStandardMaterial color="#14171b" metalness={0.5} roughness={0.5} />
+              <cylinderGeometry args={[22, 22, 9, 22]} />
+              <meshStandardMaterial color="#15181c" metalness={0.4} roughness={0.6} />
             </mesh>
             <group ref={fanRef}>
-              {[0, 1, 2, 3, 4].map((i) => (
-                <mesh key={i} rotation={[0, 0, (Math.PI * 2 * i) / 5]} position={[0, 5, 0]}>
-                  <boxGeometry args={[30, 1.6, 6]} />
-                  <meshStandardMaterial color="#7d858f" metalness={0.6} roughness={0.4} />
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <mesh key={i} rotation={[0, 0, (Math.PI * 2 * i) / 6]} position={[0, 5, 0]}>
+                  <boxGeometry args={[34, 1.6, 6]} />
+                  <meshStandardMaterial color="#8d949d" metalness={0.65} roughness={0.35} />
                 </mesh>
               ))}
             </group>
           </group>
 
           {/* 喷嘴（温度变色） */}
-          <mesh position={[0, -TOOL.h / 2 - 12, 0]} castShadow>
-            <coneGeometry args={[9, 30, 14]} />
-            <meshStandardMaterial ref={nozzleMatRef} color="#8b929c" metalness={0.75} roughness={0.35} />
+          <mesh position={[0, -TOOL.h / 2 - 15, 0]} castShadow>
+            <coneGeometry args={[9, 30, 16]} />
+            <meshStandardMaterial ref={nozzleMatRef} color="#8b929c" metalness={0.8} roughness={0.3} />
           </mesh>
         </group>
       </group>
 
-      {/* 热床（前后移动） */}
-      <group ref={bedRef} position={[0, -BED.h / 2, 0]}>
-        <mesh castShadow receiveShadow>
-          <boxGeometry args={[BED.w, BED.h, BED.d]} />
-          <meshStandardMaterial color={COLORS.bedFrame} metalness={0.2} roughness={0.85} />
+      {/* ============ 热床（前后移动） ============ */}
+      <group ref={bedRef} position={[0, 0, 0]}>
+        {/* 床架 */}
+        <mesh position={[0, -15, 0]} castShadow receiveShadow>
+          <boxGeometry args={[BED_FRAME.w, BED_FRAME.h, BED_FRAME.d]} />
+          <meshStandardMaterial color={COLORS.bedFrame} metalness={0.35} roughness={0.6} />
         </mesh>
-        <mesh position={[0, BED.h / 2 + 1, 0]} receiveShadow>
-          <boxGeometry args={[BED.w * 0.97, 2, BED.d * 0.97]} />
-          <meshStandardMaterial ref={bedMatRef} color="#4a5058" metalness={0.15} roughness={0.9} />
+
+        {/* 加热板（温度变色） */}
+        <mesh position={[0, -4, 0]} receiveShadow>
+          <boxGeometry args={[BED_PLATE.w, BED_PLATE.h, BED_PLATE.d]} />
+          <meshStandardMaterial ref={bedMatRef} color={COLORS.bedPlate} metalness={0.25} roughness={0.85} />
         </mesh>
 
         {/* 打印件：高度随层数生长 */}
         <mesh ref={partRef} position={[0, 0, 0]} scale={[1, 0.001, 1]} castShadow>
-          <boxGeometry args={[170, 200, 170]} />
+          <boxGeometry args={[partW, 200, partD]} />
           <meshStandardMaterial
             color={trayColors[activeTray] ?? trayColors[0]}
-            roughness={0.75}
+            roughness={0.72}
             metalness={0.05}
             transparent
-            opacity={0.92}
+            opacity={0.94}
           />
         </mesh>
       </group>
 
-      {/* 腔灯 */}
-      <pointLight ref={lampRef} position={[0, 240, -60]} color="#ffffff" intensity={0} distance={900} decay={1.6} />
-      <mesh position={[0, 232, -(BASE.d / 2) + 40]}>
-        <boxGeometry args={[150, 8, 16]} />
-        <meshStandardMaterial color="#f5f5f7" emissive="#ffffff" emissiveIntensity={0.35} />
+      {/* ============ 腔灯 ============ */}
+      <pointLight ref={lampRef} position={[0, 300, 40]} color="#ffffff" intensity={0} distance={1100} decay={1.5} />
+      <mesh position={[0, 400, 60]}>
+        <boxGeometry args={[260, 6, 14]} />
+        <meshStandardMaterial color="#f7f8fa" emissive="#ffffff" emissiveIntensity={0.45} />
       </mesh>
 
-      {/* AMS lite：4 个料卷（颜色来自上报） */}
-      <group position={[300, 130, -150]}>
-        {[0, 1, 2, 3].map((i) => (
-          <group key={i} position={[0, 0, i * 108]} rotation={[0, 0, Math.PI / 2]}>
-            <mesh castShadow>
-              <cylinderGeometry args={[COIL.radius, COIL.radius, COIL.thickness, 28]} />
-              <meshStandardMaterial
-                ref={(el) => {
-                  coilRefs.current[i] = el;
-                }}
-                color={trayColors[i]}
-                emissive={trayColors[i]}
-                emissiveIntensity={0.05}
-                roughness={0.7}
-              />
+      {/* ============ AMS lite（独立落地支架） ============ */}
+      <group position={[400, 0, -70]} scale={0.82}>
+        {/* 支架立柱：放在料盘靠机器一侧，避免遮挡盘面 */}
+        {[-1, 1].map((side) => (
+          <mesh key={`ams-post-${side}`} position={[-70, 172, side * 166]} castShadow>
+            <boxGeometry args={[22, 344, 22]} />
+            <meshStandardMaterial color={COLORS.amsFrame} metalness={0.3} roughness={0.5} />
+          </mesh>
+        ))}
+        {/* 立柱与料盘轴之间的横撑 */}
+        {[-1, 1].map((side) => (
+          <mesh key={`ams-arm-${side}`} position={[-36, 286, side * 166]}>
+            <boxGeometry args={[74, 14, 14]} />
+            <meshStandardMaterial color={COLORS.amsFrame} metalness={0.3} roughness={0.5} />
+          </mesh>
+        ))}
+        {/* 底座 */}
+        <mesh position={[-22, 6, 0]} castShadow receiveShadow>
+          <boxGeometry args={[138, 14, 450]} />
+          <meshStandardMaterial color={COLORS.amsFrame} metalness={0.25} roughness={0.55} />
+        </mesh>
+
+        {coilPositions.map(([y, z], i) => (
+          <group key={i} position={[0, y, z]}>
+            {/* 料盘轴心（沿 x 方向） */}
+            <group rotation={[0, 0, Math.PI / 2]}>
+              {/* 线材 */}
+              <mesh castShadow>
+                <cylinderGeometry args={[COIL.wire, COIL.wire, COIL.thickness, 32]} />
+                <meshStandardMaterial
+                  ref={(el) => {
+                    coilRefs.current[i] = el;
+                  }}
+                  color={trayColors[i]}
+                  emissive={trayColors[i]}
+                  emissiveIntensity={0.12}
+                  roughness={0.68}
+                  metalness={0.05}
+                />
+              </mesh>
+              {/* 两侧盘片：带孔环片，正面能露出线材，避免实心圆"8 字形"观感 */}
+              {[-1, 1].map((side) => (
+                <mesh key={side} position={[0, side * (COIL.thickness / 2 + 3), 0]}>
+                  <ringGeometry args={[COIL.wire + 1, COIL.outer, 44]} />
+                  <meshStandardMaterial
+                    color={COLORS.coilSide}
+                    metalness={0.15}
+                    roughness={0.65}
+                    side={THREE.DoubleSide}
+                  />
+                </mesh>
+              ))}
+              {/* 中心孔 */}
+              <mesh>
+                <cylinderGeometry args={[20, 20, COIL.thickness + 16, 20]} />
+                <meshStandardMaterial color="#2b2f36" metalness={0.4} roughness={0.6} />
+              </mesh>
+            </group>
+
+            {/* 进料器（料盘上方） */}
+            <mesh position={[0, COIL.outer - 8, 0]} castShadow>
+              <boxGeometry args={[62, 46, 52]} />
+              <meshStandardMaterial color={COLORS.toolDark} metalness={0.3} roughness={0.6} />
             </mesh>
-            <mesh>
-              <cylinderGeometry args={[COIL.radius * 0.42, COIL.radius * 0.42, COIL.thickness + 6, 20]} />
-              <meshStandardMaterial color="#2f333a" metalness={0.4} roughness={0.6} />
+            {/* 进料齿轮（黄色） */}
+            <mesh position={[0, COIL.outer - 34, 28]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[9, 9, 8, 14]} />
+              <meshStandardMaterial color="#f2c200" metalness={0.5} roughness={0.4} />
             </mesh>
           </group>
         ))}
       </group>
 
-      {/* 地面参考网格：给出打印空间与尺度感 */}
-      <gridHelper args={[900, 18, "#22262c", "#191c21"]} position={[0, -BED.h - BASE.h - 2, 0]} />
+      {/* 地面参考网格 */}
+      <gridHelper args={[1200, 24, "#232830", "#1a1e24"]} position={[0, -22 - BASE.h - 2, 0]} />
     </group>
   );
 }
