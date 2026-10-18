@@ -13,7 +13,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { ContactShadows, OrbitControls } from "@react-three/drei";
+import { ContactShadows, Environment, Lightformer, OrbitControls } from "@react-three/drei";
 
 import { A1Model } from "./a1-model";
 import { A1GlbModel } from "./a1-glb-model";
@@ -54,12 +54,28 @@ export function TwinView({ state, layerIndex = null }) {
         gl={{ antialias: true, alpha: true }}
         style={{ background: "transparent" }}
       >
-        {/* 半球环境光：天光冷、地面反弹暖灰，负责整体可读性 */}
-        <hemisphereLight intensity={0.6} color="#eaf1ff" groundColor="#b8bec9" />
-        {/* 暖主光 + 冷补光 + 侧轮廓光：明暗分工，避免单光源压碎暗部 */}
-        <directionalLight position={[420, 760, 520]} intensity={1.5} color="#fff2e2" />
-        <directionalLight position={[-480, 320, -420]} intensity={0.65} color="#bcd4ff" />
-        <directionalLight position={[900, 260, 200]} intensity={0.4} color="#ffe9c7" />
+        {/*
+          IBL（基于图像的环境光照）：产品查看器的业界标准配方。
+          用 Lightformer 程序化生成环境贴图（不下载 HDRI 文件，内网可用），
+          材质获得真实反射光泽，比纯方向光的「塑料感」高一档。
+          frames 默认静态渲染一次，无运行时开销。
+        */}
+        <Environment resolution={256}>
+          {/* 顶部大柔光箱：主反射来源 */}
+          <Lightformer intensity={2.2} rotation-x={Math.PI / 2} position={[0, 5, 0]} scale={[12, 12, 1]} color="#ffffff" />
+          {/* 左侧冷条形光：勾出机身棱线 */}
+          <Lightformer intensity={1.6} position={[-5, 1.5, -1]} rotation-y={Math.PI / 2} scale={[8, 2.5, 1]} color="#e8f0ff" />
+          {/* 右侧暖光：与主光呼应 */}
+          <Lightformer intensity={1.2} position={[5, 1, 1]} rotation-y={-Math.PI / 2} scale={[8, 2.5, 1]} color="#fff2e2" />
+          {/* 背部轮廓光：把模型从背景里「切」出来 */}
+          <Lightformer intensity={1.1} position={[0, 2, -6]} scale={[10, 4, 1]} color="#cdd9ff" />
+          {/* 地面弱反弹 */}
+          <Lightformer intensity={0.5} rotation-x={-Math.PI / 2} position={[0, -4, 0]} scale={[12, 12, 1]} color="#b8bec9" />
+        </Environment>
+
+        {/* 直光只负责方向性阴影感，环境亮度交给上面的 IBL（分工原则：环境归 IBL，方向归直光） */}
+        <directionalLight position={[420, 760, 520]} intensity={1.1} color="#fff2e2" />
+        <directionalLight position={[-480, 320, -420]} intensity={0.45} color="#bcd4ff" />
 
         {usingGlb ? (
           <ModelBoundary
