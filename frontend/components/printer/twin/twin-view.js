@@ -17,6 +17,7 @@ import { ContactShadows, OrbitControls } from "@react-three/drei";
 
 import { A1Model } from "./a1-model";
 import { A1GlbModel } from "./a1-glb-model";
+import { AmsLiteModel } from "./ams-lite-model";
 import { ModelBoundary } from "./model-boundary";
 
 export function TwinView({ state, layerIndex = null }) {
@@ -57,6 +58,8 @@ export function TwinView({ state, layerIndex = null }) {
           >
             <Suspense fallback={null}>
               <A1GlbModel state={state} layerIndex={layerIndex} />
+              {/* GLB 只有打印本体：AMS Lite 用参数化几何补齐 */}
+              <AmsLiteModel state={state} />
             </Suspense>
           </ModelBoundary>
         ) : (
