@@ -40,16 +40,26 @@ export function TwinView({ state, layerIndex = null }) {
   const usingGlb = mode === "glb";
 
   return (
-    <div className="relative h-[420px] w-full overflow-hidden rounded-xl bg-[#0b0d12] ring-1 ring-black/10 dark:ring-white/10">
+    <div
+      className={
+        "relative h-[420px] w-full overflow-hidden rounded-xl ring-1 ring-black/10 dark:ring-white/10 " +
+        // 摄影棚「无缝背景墙」：径向渐变，上亮下收，避免纯黑的生硬对比
+        "bg-[radial-gradient(120%_95%_at_50%_0%,#f8fafc_0%,#e9eef5_55%,#dbe2ec_100%)] " +
+        "dark:bg-[radial-gradient(120%_95%_at_50%_0%,#1d2432_0%,#141925_58%,#0e121b_100%)]"
+      }
+    >
       <Canvas
         camera={{ position: [820, 560, 960], fov: 30, near: 1, far: 8000 }}
         dpr={[1, 2]}
-        gl={{ antialias: true }}
+        gl={{ antialias: true, alpha: true }}
+        style={{ background: "transparent" }}
       >
-        <ambientLight intensity={0.65} />
-        <directionalLight position={[420, 760, 520]} intensity={1.35} />
-        <directionalLight position={[-480, 320, -420]} intensity={0.5} color="#bcd4ff" />
-        <directionalLight position={[900, 260, 200]} intensity={0.35} color="#ffe9c7" />
+        {/* 半球环境光：天光冷、地面反弹暖灰，负责整体可读性 */}
+        <hemisphereLight intensity={0.6} color="#eaf1ff" groundColor="#b8bec9" />
+        {/* 暖主光 + 冷补光 + 侧轮廓光：明暗分工，避免单光源压碎暗部 */}
+        <directionalLight position={[420, 760, 520]} intensity={1.5} color="#fff2e2" />
+        <directionalLight position={[-480, 320, -420]} intensity={0.65} color="#bcd4ff" />
+        <directionalLight position={[900, 260, 200]} intensity={0.4} color="#ffe9c7" />
 
         {usingGlb ? (
           <ModelBoundary
@@ -68,7 +78,7 @@ export function TwinView({ state, layerIndex = null }) {
 
         <ContactShadows
           position={[0, -85, 0]}
-          opacity={0.55}
+          opacity={0.45}
           scale={2000}
           blur={2.6}
           far={520}
@@ -83,10 +93,10 @@ export function TwinView({ state, layerIndex = null }) {
         />
       </Canvas>
 
-      <div className="pointer-events-none absolute bottom-2 left-3 text-[11px] text-white/45">
+      <div className="pointer-events-none absolute bottom-2 left-3 text-[11px] text-slate-500/80 dark:text-white/45">
         拖拽旋转 · 滚轮缩放
       </div>
-      <div className="pointer-events-none absolute right-3 top-2 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-white/70">
+      <div className="pointer-events-none absolute right-3 top-2 rounded-full bg-slate-900/5 px-2 py-0.5 text-[11px] text-slate-600 ring-1 ring-slate-900/10 dark:bg-white/10 dark:text-white/70 dark:ring-white/10">
         {usingGlb ? "真实模型 (GLB)" : "参数化模型"}
         {layerIndex ? " · 层索引驱动" : ""}
       </div>

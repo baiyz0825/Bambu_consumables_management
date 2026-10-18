@@ -465,8 +465,7 @@ export function A1Model({ state, layerIndex = null }) {
         ))}
       </group>
 
-      {/* 地面参考网格 */}
-      <gridHelper args={[1200, 24, "#232830", "#1a1e24"]} position={[0, -22 - BASE.h - 2, 0]} />
+      {/* 地面：靠容器级 ContactShadows 提供落地感（浅色/深色主题通用） */}
     </group>
   );
 }
