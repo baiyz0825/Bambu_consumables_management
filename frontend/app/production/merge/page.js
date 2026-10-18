@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { ApiError } from "../../../lib/api";
+import { ApiError, fetchJson } from "../../../lib/api";
 import {
   analyze,
   downloadOutput,
@@ -171,6 +171,10 @@ export default function Page() {
   const [testWait, setTestWait] = useState("5");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  // 占位耗材：跟随打印机当前槽位（默认）/ 不指定 / 手动类型
+  const [testFilament, setTestFilament] = useState("printer");
+  const [testPrinterId, setTestPrinterId] = useState("");
+  const [printers, setPrinters] = useState([]);
   const [swapOverrides, setSwapOverrides] = useState({});
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [cooldown, setCooldown] = useState("");
@@ -215,6 +219,25 @@ export default function Page() {
     () => presets.find((p) => p.id === presetId) || null,
     [presets, presetId]
   );
+
+  // 打印机列表：测试文件可「跟随打印机」取当前槽位耗材，避免发送时耗材不一致提示
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await fetchJson("/printers");
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : data?.items || [];
+        setPrinters(list);
+        if (list.length > 0) setTestPrinterId((prev) => prev || String(list[0].id));
+      } catch {
+        // 没有打印机不影响测试文件生成，静默降级
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 已就绪文件 → analyze 入参（列表顺序即合盘顺序）
   const items = useMemo(
@@ -440,9 +463,21 @@ export default function Page() {
       return;
     }
 
+    // 占位耗材：跟随打印机 → 传 printer_id；手动 → 传 filament_type；不指定 → 空占位
+    const extra = {};
+    if (testFilament === "printer") {
+      if (!testPrinterId) {
+        toast.error("请选择要跟随的打印机，或改为「不指定」");
+        return;
+      }
+      extra.printer_id = testPrinterId;
+    } else if (testFilament !== "none") {
+      extra.filament_type = testFilament;
+    }
+
     setTesting(true);
     try {
-      const res = await makeTestFile(null, cycles, presetId || DEFAULT_PRESET, Math.round(wait));
+      const res = await makeTestFile(null, cycles, presetId || DEFAULT_PRESET, Math.round(wait), extra);
       setTestResult(res || null);
       toast.success(`换盘测试文件已生成：${cycles} 次换盘`);
     } catch (e) {
@@ -1114,9 +1149,49 @@ export default function Page() {
                   />
                 </div>
               </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="test-filament">占位耗材</Label>
+                  <NativeSelect
+                    id="test-filament"
+                    value={testFilament}
+                    onChange={(e) => setTestFilament(e.target.value)}
+                  >
+                    <option value="printer">跟随打印机当前槽位（推荐）</option>
+                    <option value="none">不指定</option>
+                    <option value="PLA">PLA</option>
+                    <option value="PETG">PETG</option>
+                    <option value="ABS">ABS</option>
+                    <option value="TPU">TPU</option>
+                    <option value="ASA">ASA</option>
+                  </NativeSelect>
+                </div>
+                {testFilament === "printer" ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="test-printer">打印机</Label>
+                    <NativeSelect
+                      id="test-printer"
+                      value={testPrinterId}
+                      onChange={(e) => setTestPrinterId(e.target.value)}
+                    >
+                      {printers.length === 0 ? <option value="">暂无打印机</option> : null}
+                      {printers.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.alias || p.name || p.serial || p.id}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </div>
+                ) : null}
+              </div>
+
               <div className="text-xs text-muted-foreground">
                 使用上方「合盘配置」里选中的换盘码预设（当前：
                 {presets.find((p) => p.id === presetId)?.name || "默认保守档"}）。
+                {testFilament === "printer" && printers.length === 0
+                  ? " 当前没有打印机记录，将使用空占位耗材——发送时 Studio 可能提示耗材不一致，点「继续打印」即可。"
+                  : ""}
               </div>
               <Button
                 type="button"
@@ -1135,7 +1210,15 @@ export default function Page() {
                       <div className="break-all font-mono text-xs text-foreground">{testResult.output}</div>
                       <div className="text-xs text-muted-foreground">
                         {testResult.cycles} 次换盘{testResult.size ? ` · ${formatBytes(testResult.size)}` : ""}
+                        {testResult.placeholder
+                          ? ` · 占位耗材 ${testResult.placeholder.type || "空"}`
+                          : " · 空占位耗材"}
                       </div>
+                      {testResult.note ? (
+                        <div className="mt-1 text-xs text-amber-600 dark:text-amber-500">
+                          未能从打印机读取耗材：{testResult.note}（发送时 Studio 可能提示耗材不一致，点「继续打印」即可）
+                        </div>
+                      ) : null}
                     </div>
                     <div className="flex shrink-0 gap-2">
                       <Button type="button" size="sm" onClick={() => downloadOutput(testResult.output)}>

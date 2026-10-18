@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.db.models.merged_artifact import MergedArtifact
+from app.db.models.normalized_event import NormalizedEvent
 from app.db.models.printer import Printer
 
 from app.plate_merger import (
@@ -156,6 +157,10 @@ class TestFileIn(BaseModel):
     preset: str = "builtin:a1-conservative"
     #: 每次换盘后的静默等待秒数（之后播放提示音）
     wait_s: int = Field(default=5, ge=0, le=300)
+    #: 占位耗材来源：指定打印机时，从它最新上报的 AMS/外挂槽读耗材类型
+    printer_id: str | None = None
+    #: 手动指定占位耗材类型（优先于 printer_id），如 ``PLA``
+    filament_type: str | None = None
 
 
 class PlanItemIn(BaseModel):
@@ -642,9 +647,70 @@ def probe_diff(payload: DiffIn) -> dict:
     return {"changes": list(changes)}
 
 
+async def _placeholder_from_printer(
+    db: AsyncSession, printer_id: str
+) -> tuple[tuple[str, str] | None, str | None]:
+    """从打印机最新上报里取当前槽位耗材，返回 ``((类型, 颜色), 失败原因)``。
+
+    槽位选择：优先 ``tray_now`` 指向的槽；它无效（255/外挂/空）时退到
+    第一个有类型定义的槽。取不到就返回原因，由调用方降级为空占位。
+    """
+    try:
+        pid = UUID(printer_id)
+    except (ValueError, TypeError):
+        return None, "打印机 ID 无效"
+
+    row = (
+        await db.execute(
+            select(NormalizedEvent)
+            .where(NormalizedEvent.printer_id == pid)
+            .order_by(NormalizedEvent.occurred_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None, "该打印机暂无上报数据"
+
+    data = row.data_json or {}
+    trays = [t for t in (data.get("ams_trays") or []) if isinstance(t, dict)]
+    if not trays:
+        return None, "上报中没有耗材信息（可能未装 AMS）"
+
+    tray_now = data.get("tray_now")
+    chosen = None
+    if isinstance(tray_now, int) and 0 <= tray_now < len(trays):
+        chosen = trays[tray_now]
+    if chosen is None or not chosen.get("type"):
+        chosen = next((t for t in trays if t.get("type")), None)
+    if chosen is None:
+        return None, "上报的槽位都没有耗材类型"
+
+    filament_type = str(chosen.get("type") or "").upper()
+    raw_color = str(chosen.get("color") or "").strip().replace("#", "")
+    color = f"#{raw_color[:6]}" if len(raw_color) >= 6 else ""
+    return (filament_type, color), None
+
+
 @router.post("/test-file")
-def test_file_endpoint(payload: TestFileIn) -> dict:
-    """生成不加热、不耗料的换盘测试文件（每次换盘后等待 → 播放滴滴滴）。"""
+async def test_file_endpoint(
+    payload: TestFileIn, db: AsyncSession = Depends(get_db)
+) -> dict:
+    """生成不加热、不耗料的换盘测试文件（每次换盘后等待 → 播放滴滴滴）。
+
+    占位耗材：手动指定 > 打印机当前槽位 > 空占位（Studio 会提示耗材不一致，
+    但可直接继续，测试文件本身不加热不出料）。
+    """
+    placeholder: tuple[str, str] | None = None
+    source = "none"
+    note: str | None = None
+
+    if payload.filament_type:
+        placeholder = (payload.filament_type.strip().upper(), "")
+        source = "manual"
+    elif payload.printer_id:
+        placeholder, note = await _placeholder_from_printer(db, payload.printer_id)
+        source = "printer" if placeholder else "none"
+
     try:
         options = MergeOptions(
             swap_params=get_preset(payload.preset),
@@ -662,13 +728,18 @@ def test_file_endpoint(payload: TestFileIn) -> dict:
             cycles=payload.cycles,
             options=options,
             output=_OUTPUT_DIR / f"swap-test-{payload.cycles}p.gcode.3mf",
+            placeholder_filament=placeholder,
         )
     except PlateMergerError as exc:
         raise _fail(exc) from exc
+
     return {
         "output": path.name,
         "cycles": payload.cycles,
         "size": path.stat().st_size,
+        "placeholder_source": source,
+        "placeholder": {"type": placeholder[0], "color": placeholder[1]} if placeholder else None,
+        "note": note,
     }
 
 

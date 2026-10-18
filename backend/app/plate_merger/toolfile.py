@@ -63,7 +63,12 @@ def neutralize_heating(text: str, *, newline: str = "\n") -> str:
     return "".join(output)
 
 
-def _add_empty_filament(slice_info_xml: str) -> str:
+def _add_empty_filament(
+    slice_info_xml: str,
+    *,
+    filament_type: str = "",
+    filament_color: str = "",
+) -> str:
     """在 slice_info 的 plate 下补一条空耗材，并把 filament_maps 收敛为单槽。
 
     对齐官方换盘测试文件：``<filament id="1" type="" color="" used_m="0" used_g="0"/>``。
@@ -86,8 +91,10 @@ def _add_empty_filament(slice_info_xml: str) -> str:
         {
             "id": "1",
             "tray_info_idx": "",
-            "type": "",
-            "color": "",
+            # 占位耗材的类型/颜色：跟随打印机当前槽位可避免 Studio 弹
+            # 「外挂槽耗材与切片不同」提示；没有打印机时留空即可
+            "type": filament_type,
+            "color": filament_color,
             "used_m": "0",
             "used_g": "0",
         },
@@ -104,11 +111,17 @@ def _collapse_filament_maps(model_settings_xml: str) -> str:
     )
 
 
-def _collapse_filament_settings(project_settings_json: str) -> str:
+def _collapse_filament_settings(
+    project_settings_json: str,
+    *,
+    filament_type: str = "",
+    filament_color: str = "",
+) -> str:
     """工程设置里的 ``filament_*`` 数组收敛为 1 项（与单槽一致）。
 
     这些数组按槽位定义耗材（颜色 / 类型 / 预设 ID…），多盘模板会留 5 项，
     Studio 发送时会要求 5 个耗材映射——纯换盘测试只应有一个占位耗材。
+    传入类型/颜色时同步改写首项，让 Studio 的耗材比对能对上打印机当前槽位。
     """
     try:
         data = json.loads(project_settings_json)
@@ -124,6 +137,13 @@ def _collapse_filament_settings(project_settings_json: str) -> str:
             data[key] = value[:1]
             changed = True
 
+    if filament_type and isinstance(data.get("filament_type"), list) and data["filament_type"]:
+        data["filament_type"][0] = filament_type
+        changed = True
+    if filament_color and isinstance(data.get("filament_colour"), list) and data["filament_colour"]:
+        data["filament_colour"][0] = filament_color
+        changed = True
+
     return json.dumps(data, ensure_ascii=False) if changed else project_settings_json
 
 
@@ -133,6 +153,7 @@ def build_tool_file(
     cycles: int = 1,
     options: MergeOptions | None = None,
     output: str | Path | None = None,
+    placeholder_filament: tuple[str, str] | None = None,
 ) -> Path:
     """基于真实切片文件生成换盘测试 3MF。
 
@@ -140,6 +161,8 @@ def build_tool_file(
     :param cycles: 换盘次数；总动作数为 ``cycles`` 次换盘。
     :param options: 合盘配置，决定使用哪一档换盘码。
     :param output: 输出路径。
+    :param placeholder_filament: 占位耗材 ``(类型, 颜色)``，如 ``("PLA", "#FF8040")``。
+        留 ``None`` 时写入空耗材（官方格式，发送时会提示耗材不一致但可继续）。
     :raises ValidationError: 模板不是已切片文件，或循环次数非法。
     """
     effective = options or MergeOptions()
@@ -187,7 +210,10 @@ def build_tool_file(
         weight_g=0,
         filaments=[],
     )
-    members["Metadata/slice_info.config"] = _add_empty_filament(slice_info).encode("utf-8")
+    ph_type, ph_color = placeholder_filament or ("", "")
+    members["Metadata/slice_info.config"] = _add_empty_filament(
+        slice_info, filament_type=ph_type, filament_color=ph_color
+    ).encode("utf-8")
 
     key = next(
         (name for name in members if name.lower() == "metadata/model_settings.config"), None
@@ -205,7 +231,9 @@ def build_tool_file(
     )
     if settings_key is not None:
         members[settings_key] = _collapse_filament_settings(
-            members[settings_key].decode("utf-8")
+            members[settings_key].decode("utf-8"),
+            filament_type=ph_type,
+            filament_color=ph_color,
         ).encode("utf-8")
 
     strip_extra_plate_assets(members, keep=1)
