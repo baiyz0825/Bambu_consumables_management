@@ -73,7 +73,9 @@ def build_swap_block(
     """
     parts: list[str] = []
 
-    pre_sound = render_audio(options.pre_change_sound, newline=newline)
+    pre_sound = render_audio(
+        options.pre_change_sound, notes=options.pre_custom_notes, newline=newline
+    )
     if pre_sound:
         parts.append(pre_sound.rstrip("\r\n"))
 
@@ -102,7 +104,9 @@ def build_swap_block(
     if options.wait_after_swap_s > 0:
         parts.append(f"G4 P{int(options.wait_after_swap_s * 1000)}")
 
-    post_sound = render_audio(options.post_change_sound, newline=newline)
+    post_sound = render_audio(
+        options.post_change_sound, notes=options.post_custom_notes, newline=newline
+    )
     if post_sound:
         parts.append(post_sound.rstrip("\r\n"))
 

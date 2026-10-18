@@ -29,6 +29,7 @@ import {
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { NativeSelect } from "../../../components/ui/native-select";
+import { MergeAdvancedParams } from "../../../components/production/merge-advanced-params";
 
 // 后端 MergeIn 的默认预设（预设接口异常时兜底，避免发出空串）
 const DEFAULT_PRESET = "builtin:a1-conservative";
@@ -38,9 +39,21 @@ const PLATE_NUMBERS = Array.from({ length: 9 }, (_, i) => i + 1);
 
 // 首尾处理策略：后端 StartEndPolicy = full / slim / turbo
 const POLICY_OPTIONS = [
-  { value: "slim", label: "精简（slim，默认）" },
-  { value: "full", label: "全保留（full，最稳）" },
-  { value: "turbo", label: "极速（turbo，需实测）" }
+  {
+    value: "slim",
+    label: "精简（slim，默认）",
+    hint: "剥离开头的降温、调平与归位，但保留退料。喷嘴不会带着融化的料移动，是可靠性与速度的平衡点。"
+  },
+  {
+    value: "full",
+    label: "全保留（full，最稳）",
+    hint: "每盘都完整执行切片器原始的 start/end G-code：重新加热、调平、退料。最稳，但每盘多花几分钟。"
+  },
+  {
+    value: "turbo",
+    label: "极速（turbo，需实测）",
+    hint: "连退料也剥离，换盘后直接开打。最快，但首层质量取决于热床与喷嘴残料状态，必须先在实机验证。"
+  }
 ];
 
 // 盘号显示：后端 PlateDisplay = off / m73 / m117 / both
@@ -55,8 +68,21 @@ const PLATE_DISPLAY_OPTIONS = [
 const AUDIO_OPTIONS = [
   { value: "off", label: "关闭" },
   { value: "short", label: "短提示音" },
-  { value: "jingle", label: "铃声" }
+  { value: "jingle", label: "铃声" },
+  { value: "custom", label: "自定义乐谱（高级）" }
 ];
+
+//: 自定义音效的起始模板（Bambu M1006 乐谱：每条写三个音符）
+const CUSTOM_SOUND_PLACEHOLDER =
+  "M1006 A0 B20 L100 C44 D10 M60 E44 F10 N60\nM1006 A0 B10 L100 C48 D10 M60 E48 F10 N60\nM1006 A0 B10 L100 C51 D20 M60 E51 F10 N60";
+
+/** 把多行乐谱文本拆成数组（去空行 + trim） */
+function splitNotes(text) {
+  return String(text || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
 
 let rowSeq = 0;
 
@@ -132,6 +158,10 @@ export default function Page() {
   const [plateDisplay, setPlateDisplay] = useState("off");
   const [preSound, setPreSound] = useState("off");
   const [postSound, setPostSound] = useState("jingle");
+  const [preCustomNotes, setPreCustomNotes] = useState("");
+  const [postCustomNotes, setPostCustomNotes] = useState("");
+  const [swapOverrides, setSwapOverrides] = useState({});
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [cooldown, setCooldown] = useState("");
   const [waitS, setWaitS] = useState("0");
   const [outputName, setOutputName] = useState("");
@@ -351,6 +381,15 @@ export default function Page() {
       return;
     }
 
+    if (preSound === "custom" && splitNotes(preCustomNotes).length === 0) {
+      toast.error("自定义换盘前音效不能为空");
+      return;
+    }
+    if (postSound === "custom" && splitNotes(postCustomNotes).length === 0) {
+      toast.error("自定义换盘后音效不能为空");
+      return;
+    }
+
     setMerging(true);
     setResult(null);
     try {
@@ -363,7 +402,10 @@ export default function Page() {
         post_sound: postSound,
         cooldown: cooldownValue,
         wait_s: Math.round(waitNumber),
-        output_name: normalizeOutputName(outputName)
+        output_name: normalizeOutputName(outputName),
+        swap_overrides: Object.keys(swapOverrides).length > 0 ? swapOverrides : null,
+        pre_custom_notes: preSound === "custom" ? splitNotes(preCustomNotes) : null,
+        post_custom_notes: postSound === "custom" ? splitNotes(postCustomNotes) : null
       });
       setResult(res || null);
       toast.success(`合盘完成：${res?.plate_count ?? items.length} 盘`);
@@ -776,6 +818,31 @@ export default function Page() {
                         } mm`
                       : "预设详情不可用，将使用后端默认参数。"}
                   </div>
+                  <p className="text-xs leading-relaxed text-[#0071e3] dark:text-[#0a84ff]">
+                    这里调的是<strong>换料机械动作</strong>——推盘力度、Y 行程、停留时间，<strong>不是打印速度</strong>（打印速度由切片参数决定）。
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowAdvanced((v) => !v)}
+                    >
+                      {showAdvanced ? "收起参数" : "单独调整参数"}
+                    </Button>
+                    {Object.keys(swapOverrides).length > 0 ? (
+                      <span className="text-xs text-muted-foreground">
+                        已修改 {Object.keys(swapOverrides).length} 项
+                      </span>
+                    ) : null}
+                  </div>
+                  {showAdvanced ? (
+                    <MergeAdvancedParams
+                      presetId={presetId || DEFAULT_PRESET}
+                      overrides={swapOverrides}
+                      onChange={setSwapOverrides}
+                    />
+                  ) : null}
                 </div>
 
                 <div className="grid gap-2">
@@ -787,7 +854,10 @@ export default function Page() {
                       </option>
                     ))}
                   </NativeSelect>
-                  <div className="text-xs text-muted-foreground">中间盘的 start/end G-code 保留强度。</div>
+                  <div className="rounded-lg bg-[#f5f5f7] px-2.5 py-2 text-xs leading-relaxed text-muted-foreground dark:bg-white/5">
+                    {POLICY_OPTIONS.find((o) => o.value === policy)?.hint ||
+                      "中间盘的 start/end G-code 保留强度。"}
+                  </div>
                 </div>
 
                 <div className="grid gap-2">
@@ -815,6 +885,20 @@ export default function Page() {
                       </option>
                     ))}
                   </NativeSelect>
+                  {preSound === "custom" ? (
+                    <>
+                      <textarea
+                        className="min-h-[84px] w-full resize-y rounded-lg border border-black/[0.1] bg-white px-3 py-2 font-mono text-xs leading-relaxed text-foreground outline-none focus-visible:border-[#0071e3] dark:border-white/15 dark:bg-white/5"
+                        value={preCustomNotes}
+                        onChange={(e) => setPreCustomNotes(e.target.value)}
+                        placeholder={CUSTOM_SOUND_PLACEHOLDER}
+                        spellCheck={false}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        每行一条 <code>M1006</code>（三音一组），只允许 M1006 指令；留空会报错。
+                      </p>
+                    </>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-2">
@@ -826,6 +910,20 @@ export default function Page() {
                       </option>
                     ))}
                   </NativeSelect>
+                  {postSound === "custom" ? (
+                    <>
+                      <textarea
+                        className="min-h-[84px] w-full resize-y rounded-lg border border-black/[0.1] bg-white px-3 py-2 font-mono text-xs leading-relaxed text-foreground outline-none focus-visible:border-[#0071e3] dark:border-white/15 dark:bg-white/5"
+                        value={postCustomNotes}
+                        onChange={(e) => setPostCustomNotes(e.target.value)}
+                        placeholder={CUSTOM_SOUND_PLACEHOLDER}
+                        spellCheck={false}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        每行一条 <code>M1006</code>（三音一组），只允许 M1006 指令；留空会报错。
+                      </p>
+                    </>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-2">

@@ -49,6 +49,8 @@ class AudioMode(str, Enum):
     OFF = "off"
     SHORT = "short"
     JINGLE = "jingle"
+    #: 自定义 M1006 乐谱行，内容由 ``MergeOptions.*_custom_notes`` 提供
+    CUSTOM = "custom"
 
 
 class ApproachMode(str, Enum):
@@ -233,6 +235,10 @@ class MergeOptions:
     pre_change_sound: AudioMode = AudioMode.OFF
     #: 换盘后提示音
     post_change_sound: AudioMode = AudioMode.JINGLE
+    #: 自定义乐谱行（仅当对应 ``*_change_sound`` 为 CUSTOM 时使用）。
+    #: 每行必须是以 ``M1006`` 开头的乐谱指令，渲染器会补上起止标记与 M17/M400。
+    pre_custom_notes: tuple[str, ...] | None = None
+    post_custom_notes: tuple[str, ...] | None = None
     #: 换盘码起止标记（用于去重与结构校验）
     swap_start_flag: str = ";start change plate"
     swap_end_flag: str = ";end change plate"

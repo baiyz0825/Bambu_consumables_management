@@ -58,6 +58,7 @@ from app.plate_merger import (
 from app.plate_merger.layers import LayerIndex
 from app.plate_merger.models import PlateInfo
 from app.plate_merger.planner import PlateJob
+from app.plate_merger.presets import EDITABLE_FIELDS, resolve_preset
 
 router = APIRouter(prefix="/plate-merger", tags=["plate-merger"])
 
@@ -118,6 +119,11 @@ class MergeIn(BaseModel):
     cooldown: int | None = None
     wait_s: int = Field(default=0, ge=0)
     output_name: str | None = None
+    #: 覆盖预设中的可调参数（字段见 GET /presets/{id}/params 的 editable）
+    swap_overrides: dict[str, float | int | bool] | None = None
+    #: 自定义乐谱行（pre_sound / post_sound 取 custom 时必填）
+    pre_custom_notes: list[str] | None = None
+    post_custom_notes: list[str] | None = None
 
 
 class ProbeIn(BaseModel):
@@ -419,6 +425,40 @@ def render_preset(preset_id: str) -> dict:
     return {"gcode": render_swap_code(preset), "duration_s": estimate_duration_s(preset)}
 
 
+@router.get("/presets/{preset_id}/params")
+def preset_params(preset_id: str) -> dict:
+    """返回预设的可编辑参数与当前值，供前端渲染参数面板。
+
+    只暴露「数值与开关」——动作顺序由渲染器固定、不开放编辑，
+    因为顺序本身即机械语义，改错会撞机。
+    """
+    try:
+        preset = get_preset(preset_id)
+    except PlateMergerError as exc:
+        raise _fail(exc) from exc
+
+    editable = []
+    for key, label in EDITABLE_FIELDS.items():
+        value = getattr(preset, key)
+        if isinstance(value, bool):
+            kind = "bool"
+        elif isinstance(value, float):
+            kind = "float"
+        else:
+            kind = "int"
+        editable.append({"key": key, "label": label, "value": value, "type": kind})
+
+    return {
+        "preset_id": preset.preset_id,
+        "name": preset.name,
+        "machine": preset.machine,
+        "approach_mode": preset.approach_mode.value,
+        "y_limit": preset.y_limit,
+        "editable": editable,
+        "note": "换盘动作顺序不可编辑；这些参数只影响停留时间、行程与推盘方式。",
+    }
+
+
 @router.post("/analyze")
 def analyze(payload: AnalyzeIn) -> dict:
     """统计盘数、时长与耗材（不生成文件）。"""
@@ -479,11 +519,13 @@ async def merge_endpoint(payload: MergeIn, db: AsyncSession = Depends(get_db)) -
             for item in payload.items
         ]
         options = MergeOptions(
-            swap_params=get_preset(payload.preset),
+            swap_params=resolve_preset(payload.preset, payload.swap_overrides),
             start_end_policy=StartEndPolicy(payload.policy),
             plate_display=PlateDisplay(payload.plate_display),
             pre_change_sound=AudioMode(payload.pre_sound),
             post_change_sound=AudioMode(payload.post_sound),
+            pre_custom_notes=tuple(payload.pre_custom_notes) if payload.pre_custom_notes else None,
+            post_custom_notes=tuple(payload.post_custom_notes) if payload.post_custom_notes else None,
             hotbed_cooldown_c=payload.cooldown,
             wait_after_swap_s=payload.wait_s,
             output_name=payload.output_name,

@@ -19,6 +19,11 @@ export function renderPreset(presetId) {
   return fetchJson(`${PM}/presets/${encodeURIComponent(presetId)}/render`, { method: "POST" });
 }
 
+/** 预设的可编辑参数清单（含当前值与类型） */
+export function getPresetParams(presetId) {
+  return fetchJson(`${PM}/presets/${encodeURIComponent(presetId)}/params`);
+}
+
 /** 上传 3MF，返回 { path, name, size } */
 export async function upload3mf(file, { timeoutMs = 300000 } = {}) {
   const form = new FormData();
