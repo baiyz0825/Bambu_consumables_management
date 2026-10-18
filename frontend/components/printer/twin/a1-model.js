@@ -79,6 +79,9 @@ export function A1Model({ state, layerIndex = null }) {
   const nozzleMatRef = useRef(null);
   const bedMatRef = useRef(null);
   const frameMatRef = useRef(null);
+  const columnMatRef = useRef(null);
+  const beamMatRef = useRef(null);
+  const toolMatRef = useRef(null);
   const coilRefs = useRef([]);
   const partHRef = useRef(0);
 
@@ -90,6 +93,8 @@ export function A1Model({ state, layerIndex = null }) {
 
   const trays = Array.isArray(state?.ams_trays) ? state.ams_trays.slice(0, 4) : [];
   const trayColors = [0, 1, 2, 3].map((i) => trayColor(trays[i]?.color));
+  // 料卷原始自发光色：故障脉冲结束后要能恢复
+  const coilBase = trayColors.map((color) => new THREE.Color(color));
 
   // 打印件颜色跟随当前使用的槽位
   const trayNowNum = num(state?.tray_now);
@@ -182,19 +187,40 @@ export function A1Model({ state, layerIndex = null }) {
       lampRef.current.intensity = damp(lampRef.current.intensity, targets.lamp, 8, dt);
     }
 
-    // —— HMS 故障：整机红脉冲 ——
-    const hms = Array.isArray(state?.hms) ? state.hms.length : 0;
-    if (frameMatRef.current) {
-      const pulse = hms > 0 ? (Math.sin(t * 5) * 0.5 + 0.5) * 0.55 : 0;
-      frameMatRef.current.emissive.setRGB(pulse, 0, 0);
-    }
+    // —— HMS 故障：按模块号定位部件 ——
+    // ecode 前两位是模块号：03 运动控制 / 05 主板 / 07 AMS / 0C 视觉
+    const hmsList = Array.isArray(state?.hms) ? state.hms : [];
+    const modules = new Set(hmsList.map((item) => String(item?.module ?? "").toUpperCase()));
+    const known = ["03", "05", "07"];
+    const hasKnown = known.some((code) => modules.has(code));
+    // 认不出模块号时退回整机脉冲，而不是什么都不亮
+    const allOn = hmsList.length > 0 && !hasKnown;
+    const pulse = hmsList.length > 0 ? (Math.sin(t * 5) * 0.5 + 0.5) * 0.75 : 0;
 
-    // —— 换料：料卷高亮 ——
+    const paint = (material, active) => {
+      if (!material) return;
+      material.emissive.setRGB(active ? pulse : 0, 0, 0);
+    };
+
+    paint(frameMatRef.current, allOn || modules.has("05")); // 底座 = 主板
+    paint(columnMatRef.current, allOn || modules.has("03")); // 立柱 = 运动系统
+    paint(beamMatRef.current, allOn || modules.has("03")); // 横梁 = 运动系统
+    paint(toolMatRef.current, allOn || modules.has("03") || modules.has("05"));
+    paint(bedMatRef.current, allOn || modules.has("03")); // 热床 = 运动系统（覆盖温度色，故障优先）
+
+    // —— 换料 / AMS 故障：料卷高亮 ——
     const target = num(state?.tray_tar);
+    const amsFault = allOn || modules.has("07");
     coilRefs.current.forEach((mat, index) => {
       if (!mat) return;
       const active = target !== null && target === index;
-      mat.emissiveIntensity = active ? 0.45 + Math.sin(t * 6) * 0.25 : 0.05;
+      if (amsFault) {
+        mat.emissive.setRGB(pulse, 0, 0);
+        mat.emissiveIntensity = 1;
+      } else {
+        mat.emissive.copy(coilBase[index]);
+        mat.emissiveIntensity = active ? 0.45 + Math.sin(t * 6) * 0.25 : 0.05;
+      }
     });
   });
 
@@ -215,21 +241,21 @@ export function A1Model({ state, layerIndex = null }) {
       {/* Z 立柱（A1 为单立柱悬臂结构） */}
       <mesh position={[0, COLUMN.h / 2 - BED.h, -(BASE.d / 2) + 30]} castShadow>
         <boxGeometry args={[COLUMN.w, COLUMN.h, COLUMN.d]} />
-        <meshStandardMaterial color={COLORS.frameEdge} metalness={0.4} roughness={0.55} />
+        <meshStandardMaterial ref={columnMatRef} color={COLORS.frameEdge} metalness={0.4} roughness={0.55} />
       </mesh>
 
       {/* 龙门横梁（随打印层高上下移动） */}
       <group ref={gantryRef} position={[0, 40, -(BASE.d / 2) + 62]}>
         <mesh castShadow>
           <boxGeometry args={[BEAM.w, BEAM.h, BEAM.d]} />
-          <meshStandardMaterial color={COLORS.frameEdge} metalness={0.45} roughness={0.5} />
+          <meshStandardMaterial ref={beamMatRef} color={COLORS.frameEdge} metalness={0.45} roughness={0.5} />
         </mesh>
 
         {/* 喷头组件（沿横梁左右移动） */}
         <group ref={toolRef} position={[0, 0, 18]}>
           <mesh castShadow>
             <boxGeometry args={[TOOL.w, TOOL.h, TOOL.d]} />
-            <meshStandardMaterial color={COLORS.tool} metalness={0.3} roughness={0.65} />
+            <meshStandardMaterial ref={toolMatRef} color={COLORS.tool} metalness={0.3} roughness={0.65} />
           </mesh>
 
           {/* 散热风扇 */}

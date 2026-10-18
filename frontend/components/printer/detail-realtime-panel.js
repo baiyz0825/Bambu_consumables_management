@@ -140,6 +140,11 @@ export function DetailRealtimePanel({ liveState, eventMeta, layerIndex = null, l
               ? `喷嘴位置来自 G-code 层索引（${layerIndex.count} 层${layerSource ? ` · ${layerSource}` : ""}），层内为匀速插值。`
               : "未匹配到合盘产物，喷嘴位置为估算摆动。合盘并下发后会自动使用层索引。"}
           </p>
+          {state?.hms?.length ? (
+            <p className="mt-1 text-xs text-[#ff3b30]">
+              故障定位：底座=主板 · 立柱/横梁/热床=运动系统 · 料卷=AMS（未识别模块号时整机脉冲）
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 
