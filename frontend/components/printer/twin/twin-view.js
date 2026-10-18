@@ -41,7 +41,7 @@ export function TwinView({ state, layerIndex = null }) {
   return (
     <div className="relative h-[420px] w-full overflow-hidden rounded-xl bg-[#0b0d12] ring-1 ring-black/10 dark:ring-white/10">
       <Canvas
-        camera={{ position: [700, 470, 780], fov: 34, near: 1, far: 7000 }}
+        camera={{ position: [820, 560, 960], fov: 30, near: 1, far: 8000 }}
         dpr={[1, 2]}
         gl={{ antialias: true }}
       >
@@ -76,7 +76,7 @@ export function TwinView({ state, layerIndex = null }) {
           minDistance={380}
           maxDistance={2400}
           maxPolarAngle={Math.PI / 2.05}
-          target={[130, 170, 0]}
+          target={[0, 215, 0]}
         />
       </Canvas>
 
