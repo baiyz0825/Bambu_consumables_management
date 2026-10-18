@@ -460,7 +460,7 @@ export default function Page() {
                 aria-invalid={Boolean(errors.path)}
               />
               <p className="text-xs text-muted-foreground">
-                服务端文件路径，通常为 /tmp/plate-merger/&lt;文件名&gt;。后端只接受服务端本地已存在的 .3mf
+                服务端文件路径。已登记产物会自动预填其真实路径；后端只接受服务端本地已存在的 .3mf
                 文件，若部署时改过产物目录，请改成实际路径。
               </p>
               {errors.path ? <p className="text-xs text-destructive">{errors.path}</p> : null}

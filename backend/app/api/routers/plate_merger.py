@@ -62,10 +62,13 @@ from app.plate_merger.presets import EDITABLE_FIELDS, resolve_preset
 
 router = APIRouter(prefix="/plate-merger", tags=["plate-merger"])
 
+#: 数据根目录：设了 ``PLATE_MERGER_DATA_DIR`` 就收进去（Docker 里挂卷持久化）；
+#: 未设置时保持 /tmp 下的历史位置，本地开发与旧部署零破坏
+_PM_DATA_DIR = os.environ.get("PLATE_MERGER_DATA_DIR")
 #: 生成产物统一落在这里，下载接口只允许读取该目录
-_OUTPUT_DIR = Path(tempfile.gettempdir()) / "plate-merger"
+_OUTPUT_DIR = Path(_PM_DATA_DIR, "outputs") if _PM_DATA_DIR else Path(tempfile.gettempdir()) / "plate-merger"
 #: 上传的原始 3MF；API 只允许从这里读取输入，杜绝任意路径读取
-_UPLOAD_DIR = Path(tempfile.gettempdir()) / "plate-merger-uploads"
+_UPLOAD_DIR = Path(_PM_DATA_DIR, "uploads") if _PM_DATA_DIR else Path(tempfile.gettempdir()) / "plate-merger-uploads"
 #: 单文件上限（3MF 常见 10~200MB）
 _MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 

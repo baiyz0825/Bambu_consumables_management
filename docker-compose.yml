@@ -19,12 +19,14 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://consumables:consumables@db:5432/consumables}
       ALLOW_INSECURE_MQTT_TLS: ${ALLOW_INSECURE_MQTT_TLS:-true}
       AGENT_DEBUG_LOG_PATH: /logs/debug.log
+      PLATE_MERGER_DATA_DIR: /data/plate-merger
     depends_on:
       - db
     ports:
       - "8000:8000"
     volumes:
       - logs_data:/logs
+      - plate_merger_data:/data/plate-merger
 
   collector:
     build:
@@ -52,6 +54,7 @@ services:
       - "3000:3000"
 
 volumes:
+  plate_merger_data:
   db_data:
   logs_data:
 

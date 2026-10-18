@@ -26,6 +26,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://consumables:consumables@db:5432/consumables}
       ALLOW_INSECURE_MQTT_TLS: ${ALLOW_INSECURE_MQTT_TLS:-true}
       AGENT_DEBUG_LOG_PATH: /logs/debug.log
+      PLATE_MERGER_DATA_DIR: /data/plate-merger
       MIGRATION_MAX_ATTEMPTS: ${MIGRATION_MAX_ATTEMPTS:-60}
       MIGRATION_RETRY_SLEEP_SEC: ${MIGRATION_RETRY_SLEEP_SEC:-1}
     depends_on:
@@ -35,6 +36,7 @@ services:
       - "${API_PORT:-8000}:8000"
     volumes:
       - logs_data:/logs
+      - plate_merger_data:/data/plate-merger
     restart: unless-stopped
     healthcheck:
       test:
@@ -73,6 +75,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  plate_merger_data:
   db_data:
   logs_data:
 
