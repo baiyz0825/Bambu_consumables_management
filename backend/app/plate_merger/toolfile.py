@@ -12,8 +12,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
+from xml.etree import ElementTree as _ET
 
 from .errors import ValidationError
 from .gcode import GcodeBlocks, detect_newline
@@ -37,41 +39,6 @@ _SET_HEAT = re.compile(r"^(M104|M140)\s+S\d+")
 #: CONFIG 段里的耗材声明注释：Studio 会据此要求耗材映射，测试文件必须清掉
 _FILAMENT_META = re.compile(r"^;\s*(?:default_)?filament_\w+\s*=")
 
-#: 空的 3D 模型（合法 3MF core XML、无任何几何）：保留引用完整性，去掉模板几何
-_EMPTY_MODEL_XML = (
-    '<?xml version="1.0" encoding="UTF-8"?>\n'
-    '<model unit="millimeter" xml:lang="en-US" '
-    'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n'
-    ' <metadata name="Application">consumables-management swap-test</metadata>\n'
-    " <resources/>\n <build/>\n</model>\n"
-)
-
-#: 包级引用：只指向空模型与文件缩略图
-_PACKAGE_RELS_XML = (
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
-    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-    '<Relationship Target="/3D/3dmodel.model" Id="rel-1" '
-    'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>'
-    '<Relationship Target="{thumbnail_target}" Id="rel-2" '
-    'Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"/>'
-    "</Relationships>"
-)
-
-#: model_settings 引用：只指向合并后的 gcode
-_MODEL_SETTINGS_RELS_XML = (
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
-    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-    '<Relationship Target="/{gcode_member}" Id="rel-1" '
-    'Type="http://schemas.bambulab.com/package/2021/gcode"/>'
-    "</Relationships>"
-)
-
-#: 空的盘信息：无对象、无耗材
-_EMPTY_PLATE_JSON = (
-    '{"bbox_all":[0,0,0,0],"bbox_objects":[],"bed_type":"textured_plate",'
-    '"filament_colors":[],"filament_ids":[],"first_extruder":0,'
-    '"is_seq_print":false,"nozzle_diameter":0.4000000059604645,"version":2}'
-)
 
 
 def neutralize_heating(text: str, *, newline: str = "\n") -> str:
@@ -94,6 +61,70 @@ def neutralize_heating(text: str, *, newline: str = "\n") -> str:
             continue
         output.append(line)
     return "".join(output)
+
+
+def _add_empty_filament(slice_info_xml: str) -> str:
+    """在 slice_info 的 plate 下补一条空耗材，并把 filament_maps 收敛为单槽。
+
+    对齐官方换盘测试文件：``<filament id="1" type="" color="" used_m="0" used_g="0"/>``。
+    没有这条时 Studio 会认为切片引用了耗材却无元数据，弹「未映射」并禁用发送。
+    """
+    root = _ET.fromstring(slice_info_xml)
+    plate = root.find("plate")
+    if plate is None:
+        return slice_info_xml
+
+    for metadata in plate.findall("metadata"):
+        if metadata.get("key") in {"filament_maps", "limit_filament_maps"}:
+            metadata.set("value", "1" if metadata.get("key") == "filament_maps" else "0")
+
+    for existing in plate.findall("filament"):
+        plate.remove(existing)
+    _ET.SubElement(
+        plate,
+        "filament",
+        {
+            "id": "1",
+            "tray_info_idx": "",
+            "type": "",
+            "color": "",
+            "used_m": "0",
+            "used_g": "0",
+        },
+    )
+    return _ET.tostring(root, encoding="unicode", xml_declaration=False)
+
+
+def _collapse_filament_maps(model_settings_xml: str) -> str:
+    """把 model_settings 的 ``filament_maps`` 收敛为单槽 ``"1"``。"""
+    return re.sub(
+        r'(key="filament_maps"\s+value=")[^"]*(")',
+        r"\g<1>1\g<2>",
+        model_settings_xml,
+    )
+
+
+def _collapse_filament_settings(project_settings_json: str) -> str:
+    """工程设置里的 ``filament_*`` 数组收敛为 1 项（与单槽一致）。
+
+    这些数组按槽位定义耗材（颜色 / 类型 / 预设 ID…），多盘模板会留 5 项，
+    Studio 发送时会要求 5 个耗材映射——纯换盘测试只应有一个占位耗材。
+    """
+    try:
+        data = json.loads(project_settings_json)
+    except ValueError:
+        return project_settings_json
+
+    if not isinstance(data, dict):
+        return project_settings_json
+
+    changed = False
+    for key, value in data.items():
+        if key.startswith("filament_") and isinstance(value, list) and len(value) > 1:
+            data[key] = value[:1]
+            changed = True
+
+    return json.dumps(data, ensure_ascii=False) if changed else project_settings_json
 
 
 def build_tool_file(
@@ -147,19 +178,34 @@ def build_tool_file(
     # 只保留一个 END 标记，结构才合法
     text = f"{preamble}{swap_blocks}{blocks.executable_end_marker}{blocks.epilogue}"
 
-    members["Metadata/slice_info.config"] = rewrite_slice_info(
+    # 先按合盘语义清空并置 0，再补一个「空耗材」条目：
+    # 官方换盘测试文件正是 1 条空 filament（type/color 为空、用量 0）——
+    # 完全清空会让 Studio 认为「切片引用了耗材但无元数据」而禁用发送。
+    slice_info = rewrite_slice_info(
         members["Metadata/slice_info.config"].decode("utf-8"),
         prediction_s=0,
         weight_g=0,
         filaments=[],
-    ).encode("utf-8")
+    )
+    members["Metadata/slice_info.config"] = _add_empty_filament(slice_info).encode("utf-8")
 
     key = next(
         (name for name in members if name.lower() == "metadata/model_settings.config"), None
     )
     if key is not None:
-        members[key] = rewrite_model_settings(
+        collapsed = rewrite_model_settings(
             members[key].decode("utf-8"), gcode_member=MERGED_GCODE_MEMBER
+        )
+        members[key] = _collapse_filament_maps(collapsed).encode("utf-8")
+
+    # 工程设置里的耗材数组按槽位定义（多盘模板会有 5 项），Studio 据此要求
+    # 5 个耗材映射。纯测试文件收敛为单槽，与官方换盘测试文件一致。
+    settings_key = next(
+        (name for name in members if name.lower() == "metadata/project_settings.config"), None
+    )
+    if settings_key is not None:
+        members[settings_key] = _collapse_filament_settings(
+            members[settings_key].decode("utf-8")
         ).encode("utf-8")
 
     strip_extra_plate_assets(members, keep=1)
@@ -170,29 +216,13 @@ def build_tool_file(
     for name in [n for n in members if n.startswith("Auxiliaries/")]:
         members.pop(name, None)
 
-    # —— 彻底纯化：不掺杂任何模板的模型/图片/多盘引用 ——
-    # 1) 移除模板的所有预览图与切割信息（预览换成本模块生成的文字缩略图）
-    for name in [
-        n
-        for n in members
-        if n.endswith(".png") or n == "Metadata/cut_information.xml"
-    ]:
-        members.pop(name, None)
-    thumbnail = render_swap_thumbnail(cycles)
-    members["Metadata/plate_1.png"] = thumbnail
-    members["Metadata/plate_1_small.png"] = render_swap_thumbnail(cycles, size=128)
-
-    # 2) 3D 模型替换为空资源（保留成员与引用完整性，去掉模板几何）；
-    #    plate_1.json 清空对象列表，Studio 不再显示模板里的对象
-    members["3D/3dmodel.model"] = _EMPTY_MODEL_XML.encode("utf-8")
-    members["_rels/.rels"] = _PACKAGE_RELS_XML.format(thumbnail_target="/Auxiliaries/.thumbnails/thumbnail_3mf.png").encode("utf-8")
-    members["Auxiliaries/.thumbnails/thumbnail_3mf.png"] = thumbnail
-    members["Metadata/_rels/model_settings.config.rels"] = _MODEL_SETTINGS_RELS_XML.format(
-        gcode_member=MERGED_GCODE_MEMBER
-    ).encode("utf-8")
-    plate_json_key = next((n for n in members if n.endswith("plate_1.json")), None)
-    if plate_json_key:
-        members[plate_json_key] = _EMPTY_PLATE_JSON
+    # 预览图换成文字缩略图（一点 = 一次换盘）。
+    # 注意：其余模板资产（3D 几何、rels、plate json）必须原样保留——
+    # 实测替换/删除它们会让 Studio 判定「3mf 文件配置无效」。
+    if "Metadata/plate_1.png" in members:
+        members["Metadata/plate_1.png"] = render_swap_thumbnail(cycles, size=512)
+    if "Metadata/plate_1_small.png" in members:
+        members["Metadata/plate_1_small.png"] = render_swap_thumbnail(cycles, size=128)
 
     gcode_bytes = text.encode("utf-8")
     members[MERGED_GCODE_MEMBER] = gcode_bytes
